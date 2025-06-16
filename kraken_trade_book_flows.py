@@ -6,7 +6,6 @@ from prefect.artifacts import create_table_artifact
 
 @flow(log_prints=True)
 async def pull_kraken_trade_book(pair: str, count: int = 500):
-    
     # Get the trade book from Kraken.
     response = requests.get(
         f"https://api.kraken.com/0/public/Depth?pair={pair}&count={count}"
