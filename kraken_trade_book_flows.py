@@ -37,30 +37,26 @@ async def pull_kraken_trade_book(pairs: list[str], count: int = 500):
     logger.info(
         f"Starting to pull trade book data for pairs: {pairs} with count {count}."
     )
-    trade_books = {}
+    trade_books: dict[str, object] = {}
     for pair in pairs:
         logger.info(f"Fetching trade book for {pair}.")
         trade_books.update(await fetch_kraken_trade_book(pair, count))
 
     # Convert the trade book data to a pandas DataFrame.
+    trade_book_df = pd.DataFrame()
     for pair, book in trade_books.items():
         logger.info(f"Processing trade book for {pair}.")
-        trade_book_df = pd.DataFrame(
-            book["asks"], columns=["price", "volume", "timestamp"]
-        )
-        trade_book_df["pair"] = pair
-        trade_book_df["timestamp"] = pd.to_datetime(
-            trade_book_df["timestamp"], unit="s"
-        )
-        trade_book_df["timestamp"] = trade_book_df["timestamp"].dt.strftime(
-            "%Y-%m-%d %H:%M:%S"
-        )
-        trade_book_df.sort_values(by="timestamp", inplace=True, ascending=False)
-        await create_table_artifact(
-            key=f"kraken-trade-book-{pair}".lower(),
-            table=trade_book_df.to_dict(orient="records"),
-            description=f"Trade book data for {pair} from Kraken.",
-        )
+        pair_df = pd.DataFrame(book["asks"], columns=["price", "volume", "timestamp"])
+        pair_df["pair"] = pair
+        pair_df["timestamp"] = pd.to_datetime(pair_df["timestamp"], unit="s")
+        pair_df["timestamp"] = pair_df["timestamp"].dt.strftime("%Y-%m-%d %H:%M:%S")
+        trade_book_df = pd.concat([trade_book_df, pair_df], ignore_index=True)
+    trade_book_df.sort_values(by=["pair", "timestamp"], inplace=True, ascending=False)
+    await create_table_artifact(
+        key="kraken-trade-book",
+        table=trade_book_df.to_dict(orient="records"),
+        description="Trade book data from Kraken.",
+    )
 
 
 if __name__ == "__main__":
