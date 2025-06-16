@@ -29,6 +29,31 @@ async def fetch_kraken_trade_book(pair: str, count: int = 500) -> dict[str, obje
     return trade_book
 
 
+@task(log_prints=True)
+async def create_trade_book_table_artifact(trade_books: dict[str, object]):
+    logger = get_run_logger()
+
+    # Convert the trade book data to a pandas DataFrame.
+    trade_book_df = pd.DataFrame()
+    for pair, book in trade_books.items():
+        logger.info(f"Processing trade book for {pair}.")
+        pair_df = pd.DataFrame(book["asks"], columns=["price", "volume", "timestamp"])
+        pair_df["pair"] = pair
+        pair_df["timestamp"] = pd.to_datetime(pair_df["timestamp"], unit="s")
+        pair_df["timestamp"] = pair_df["timestamp"].dt.strftime("%Y-%m-%d %H:%M:%S")
+        trade_book_df = pd.concat([trade_book_df, pair_df], ignore_index=True)
+
+    # Sort the DataFrame by pair and timestamp.
+    trade_book_df.sort_values(by=["pair", "timestamp"], inplace=True, ascending=False)
+
+    # Create a table artifact from the DataFrame.
+    await create_table_artifact(
+        key="kraken-trade-book",
+        table=trade_book_df.to_dict(orient="records"),
+        description="Trade book data from Kraken.",
+    )
+
+
 @flow(log_prints=True)
 async def pull_kraken_trade_book(pairs: list[str], count: int = 500):
     logger = get_run_logger()
@@ -41,22 +66,11 @@ async def pull_kraken_trade_book(pairs: list[str], count: int = 500):
     for pair in pairs:
         logger.info(f"Fetching trade book for {pair}.")
         trade_books.update(await fetch_kraken_trade_book(pair, count))
+    logger.info("All trade books fetched successfully.")
 
-    # Convert the trade book data to a pandas DataFrame.
-    trade_book_df = pd.DataFrame()
-    for pair, book in trade_books.items():
-        logger.info(f"Processing trade book for {pair}.")
-        pair_df = pd.DataFrame(book["asks"], columns=["price", "volume", "timestamp"])
-        pair_df["pair"] = pair
-        pair_df["timestamp"] = pd.to_datetime(pair_df["timestamp"], unit="s")
-        pair_df["timestamp"] = pair_df["timestamp"].dt.strftime("%Y-%m-%d %H:%M:%S")
-        trade_book_df = pd.concat([trade_book_df, pair_df], ignore_index=True)
-    trade_book_df.sort_values(by=["pair", "timestamp"], inplace=True, ascending=False)
-    await create_table_artifact(
-        key="kraken-trade-book",
-        table=trade_book_df.to_dict(orient="records"),
-        description="Trade book data from Kraken.",
-    )
+    # Create a table artifact from the fetched trade book data.
+    logger.info("Creating table artifact from trade book data.")
+    await create_trade_book_table_artifact(trade_books)
 
 
 if __name__ == "__main__":
