@@ -9,7 +9,7 @@ if __name__ == "__main__":
         credentials=GitHubCredentials.load("github-credentials"),
         branch="main",
     )
-    flow.from_source(source=source, entrypoint="my_file.py:my_flow").deploy(
+    flow.from_source(source=source, entrypoint="kraken_trade_book_flows.py:pull_kraken_trade_book").deploy(
          image=DockerImage(
             name="glynfinck/sentiment",
             tag="latest",
