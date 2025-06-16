@@ -16,8 +16,9 @@ if __name__ == "__main__":
         image=DockerImage(
             name="glynfinck/sentiment", tag="latest", dockerfile="Dockerfile"
         ),
-        name="pull_kraken_trade_book",
+        name="pull_kraken_trade_book_xbtusd",
         work_pool_name="kubernetes-default",
+        parameters={"pair": "XBTUSD", "count": 500},  # Default parameters
         build=False,
         push=False,
     )

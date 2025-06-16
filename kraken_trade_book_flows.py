@@ -1,12 +1,20 @@
 import requests
 import pandas as pd
-from prefect import flow, serve
+from prefect import flow, serve, task, get_run_logger
 from prefect.artifacts import create_table_artifact
+from prefect.concurrency.sync import rate_limit
 
 
-@flow(log_prints=True)
-async def pull_kraken_trade_book(pair: str, count: int = 500):
-    # Get the trade book from Kraken.
+@task(log_prints=True)
+async def fetch_kraken_trade_book(pair: str, count: int = 500) -> dict[str, object]:
+    logger = get_run_logger()
+
+    # Rate limit the task to avoid hitting Kraken's API too frequently.
+    logger.info("Applying rate limit to Kraken API requests.")
+    rate_limit("kraken-api")
+
+    # Fetch the trade book from Kraken's public API.
+    logger.info(f"Fetching trade book for {pair} with count {count} from Kraken.")
     response = requests.get(
         f"https://api.kraken.com/0/public/Depth?pair={pair}&count={count}"
     )
@@ -18,9 +26,19 @@ async def pull_kraken_trade_book(pair: str, count: int = 500):
     trade_book: dict[str, object] = data.get("result")
     if not trade_book:
         raise Exception("No trade book data found in the response.")
+    return trade_book
+
+
+@flow(log_prints=True)
+async def pull_kraken_trade_book(pair: str, count: int = 500):
+    logger = get_run_logger()
+
+    # Fetch the trade book data from Kraken.
+    trade_book = await fetch_kraken_trade_book(pair, count)
 
     # Convert the trade book data to a pandas DataFrame.
     for pair, book in trade_book.items():
+        logger.info(f"Processing trade book for {pair}.")
         trade_book_df = pd.DataFrame(
             book["asks"], columns=["price", "volume", "timestamp"]
         )
