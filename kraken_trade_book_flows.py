@@ -11,7 +11,7 @@ async def fetch_kraken_trade_book(pair: str, count: int = 500) -> dict[str, obje
 
     # Rate limit the task to avoid hitting Kraken's API too frequently.
     logger.info("Applying rate limit to Kraken API requests.")
-    rate_limit("kraken-api")
+    rate_limit("kraken-api", strict=True, timeout_seconds=60)
 
     # Fetch the trade book from Kraken's public API.
     logger.info(f"Fetching trade book for {pair} with count {count} from Kraken.")
