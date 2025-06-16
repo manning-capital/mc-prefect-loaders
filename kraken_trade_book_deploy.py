@@ -1,9 +1,7 @@
 from prefect import flow
 from prefect.docker import DockerImage
 from prefect_github import GitHubCredentials
-from prefect.runner.storage import LocalStorage
 from prefect.runner.storage import GitRepository
-from kraken_trade_book_flows import pull_kraken_trade_book
 
 
 if __name__ == "__main__":
