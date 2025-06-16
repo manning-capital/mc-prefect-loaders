@@ -1,11 +1,7 @@
-# Use a Python image with uv pre-installed
-FROM python:3.12.11-slim-bookworm
+FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
 
-# Install the project into `/app`
-WORKDIR /app
-
-# Install uv tool
-RUN pip install uv
+# Install Git for version control.
+RUN apt-get update && apt-get install -y git
 
 # Enable bytecode compilation
 ENV UV_COMPILE_BYTECODE=1
@@ -25,4 +21,4 @@ COPY . .
 RUN uv sync --locked --no-dev
 
 # Place executables in the environment at the front of the path
-ENV PATH="/app/.venv/bin:$PATH"
+ENV PATH="/.venv/bin:$PATH"
