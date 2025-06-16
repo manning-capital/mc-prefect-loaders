@@ -5,8 +5,8 @@ from prefect_github import GitHubCredentials
 
 if __name__ == "__main__":
     source = GitRepository(
-        url="https://github.com/org/private-repo.git",
-        credentials=GitHubCredentials.load("my-github-credentials-block"),
+        url="https://github.com/glynfinck/sentiment",
+        credentials=GitHubCredentials.load("github-credentials"),
         branch="main",
     )
     flow.from_source(source=source, entrypoint="my_file.py:my_flow").deploy(
