@@ -26,18 +26,24 @@ async def fetch_kraken_trade_book(pair: str, count: int = 500) -> dict[str, obje
     trade_book: dict[str, object] = data.get("result")
     if not trade_book:
         raise Exception("No trade book data found in the response.")
-    return trade_book
+    return trade_book[pair]
 
 
 @flow(log_prints=True)
-async def pull_kraken_trade_book(pair: str, count: int = 500):
+async def pull_kraken_trade_book(pairs: list[str], count: int = 500):
     logger = get_run_logger()
 
     # Fetch the trade book data from Kraken.
-    trade_book = await fetch_kraken_trade_book(pair, count)
+    logger.info(
+        f"Starting to pull trade book data for pairs: {pairs} with count {count}."
+    )
+    trade_books = {}
+    for pair in pairs:
+        logger.info(f"Fetching trade book for {pair}.")
+        trade_books[pair] = await fetch_kraken_trade_book(pair, count)
 
     # Convert the trade book data to a pandas DataFrame.
-    for pair, book in trade_book.items():
+    for pair, book in trade_books.items():
         logger.info(f"Processing trade book for {pair}.")
         trade_book_df = pd.DataFrame(
             book["asks"], columns=["price", "volume", "timestamp"]
@@ -60,6 +66,6 @@ async def pull_kraken_trade_book(pair: str, count: int = 500):
 if __name__ == "__main__":
     pull_kraken_trade_book_deployment = pull_kraken_trade_book.to_deployment(
         name="pull_kraken_trade_book",
-        parameters={"pair": "XBTUSD", "count": 500},  # Default parameters
+        parameters={"pairs": ["XBTUSD", "XBTEUR"], "count": 500},  # Default parameters
     )
     serve(pull_kraken_trade_book_deployment)
