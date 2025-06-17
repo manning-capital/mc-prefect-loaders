@@ -13,6 +13,8 @@ dependencies = [
     "prefect[github]>=3.4.5",
     "prefect-docker>=0.6.6",
     "pyarrow>=20.0.0",
+    "psycopg2>=2.9.10",
+    "sqlalchemy>=2.0.41",
 ]
 
 [dependency-groups]
