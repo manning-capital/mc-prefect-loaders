@@ -6,14 +6,15 @@ from datetime import datetime
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from prefect import flow
-from prefect.docker import DockerImage
-from prefect.runner.storage import GitRepository
-from prefect.schedules import Interval
-from prefect_github import GitHubCredentials
 from prefect.client.schemas.objects import (
     ConcurrencyLimitConfig,
     ConcurrencyLimitStrategy,
 )
+from prefect.docker import DockerImage
+from prefect.runner.storage import GitRepository
+from prefect.schedules import Interval
+from prefect_github import GitHubCredentials
+
 from src.kraken_trade_book_flows import INTERVAL_SECONDS
 
 if __name__ == "__main__":
