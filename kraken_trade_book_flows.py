@@ -370,6 +370,7 @@ async def pull_kraken_orders(
 if __name__ == "__main__":
     pull_kraken_orders_deployment = pull_kraken_orders.to_deployment(
         name="pull_kraken_orders_debug",
+        concurrency_limit=1,
         parameters={
             "from_asset_ids": [1],
             "to_asset_ids": [2],
