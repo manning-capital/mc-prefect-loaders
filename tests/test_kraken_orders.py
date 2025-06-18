@@ -4,17 +4,18 @@ import sys
 # Ensure the parent directory is in the Python path.
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import pytest
-import pandas as pd
 from datetime import datetime
 from unittest.mock import patch
+
+import pandas as pd
+import pytest
+from prefect.logging import disable_run_logger
+from prefect.testing.utilities import prefect_test_harness
+
 from src.kraken_trade_book_flows import (
     pull_kraken_orders,
 )
 from tests.mock_database import MockDatabase
-
-from prefect.testing.utilities import prefect_test_harness
-from prefect.logging import disable_run_logger
 
 
 @pytest.fixture(autouse=True, scope="session")
