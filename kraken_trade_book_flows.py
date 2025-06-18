@@ -10,7 +10,7 @@ from prefect.concurrency.sync import rate_limit
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
-from models import Provider, ProviderAsset, ProviderAssetOrder
+from models import Provider, ProviderAssetOrder
 
 
 @task()
@@ -76,52 +76,6 @@ async def get_kraken_order_book(pair: str, count: int = 500) -> dict[str, object
     if not trade_book:
         raise Exception("No trade book data found in the response.")
     return trade_book
-
-
-@task()
-async def get_provider_asset_data(
-    from_assets_ids: list[int], to_asset_ids: list[int]
-) -> pd.DataFrame:
-    """
-    Fetch provider asset data for the given asset pairs.
-    """
-    url = await get_postgres_url()
-    engine = create_engine(url)
-    logger = get_run_logger()
-    with Session(engine) as session:
-        stmt = select(ProviderAsset).where(
-            ProviderAsset.asset_id.in_(from_assets_ids + to_asset_ids),
-        )
-        df = pd.read_sql(stmt, session.bind)
-
-        # Check for any ids that are not found in the provider asset data, filter these out.
-        missing_from_assets = set(from_assets_ids) - set(df["asset_id"].to_list())
-        missing_to_assets = set(to_asset_ids) - set(df["asset_id"].to_list())
-        if missing_from_assets or missing_to_assets:
-            logger.warning(
-                f"Missing asset ids in provider data: from_assets: {missing_from_assets}, to_assets: {missing_to_assets}"
-            )
-            df = df[
-                df["from_asset_id"].isin(df["asset_id"].to_list())
-                & df["to_asset_id"].isin(df["asset_id"].to_list())
-            ]
-
-        # Join the provider asset data with the pairs DataFrame.
-        df = df.merge(
-            df[["asset_id", "asset_code"]],
-            left_on="from_asset_id",
-            right_on="asset_id",
-            how="left",
-        ).rename(columns={"asset_code": "from_asset_code"})
-        df = df.merge(
-            df[["asset_id", "asset_code"]],
-            left_on="to_asset_id",
-            right_on="asset_id",
-            how="left",
-        ).rename(columns={"asset_code": "to_asset_code"})
-        df["pair"] = df["from_asset_code"].str.upper() + df["to_asset_code"].str.upper()
-
-        return df
 
 
 @task()
@@ -310,6 +264,28 @@ async def get_provider_asset_order_data(
 
 
 @task()
+async def save_provider_asset_order_data(
+    to_set: pd.DataFrame,
+):
+    """
+    Save the provider asset order data to PostgreSQL.
+    """
+    # Get the PostgreSQL connection string.
+    url = await get_postgres_url()
+    engine = create_engine(url)
+    logger = get_run_logger()
+    with engine.connect() as conn:
+        logger.info("Starting to save order data...")
+        to_set.to_sql(
+            "provider_asset_order",
+            conn,
+            if_exists="append",
+            index=False,
+        )
+        logger.info(f"Saved {len(to_set)} new order records...")
+
+
+@task()
 async def save_order_data(
     new_provider_asset_order_data: pd.DataFrame,
     current_provider_asset_data: pd.DataFrame,
@@ -318,10 +294,6 @@ async def save_order_data(
     Save the provider asset order data to PostgreSQL.
     """
     logger = get_run_logger()
-
-    # Get the PostgreSQL connection string.
-    url = await get_postgres_url()
-    engine = create_engine(url)
 
     # Check if the DataFrame is empty.
     if new_provider_asset_order_data.empty:
@@ -348,17 +320,7 @@ async def save_order_data(
         provider_asset_order_data = new_provider_asset_order_data
 
     # Save the data to PostgreSQL.
-    logger.info(
-        f"Saving {len(provider_asset_order_data)} new order records to PostgreSQL."
-    )
-    with engine.connect() as conn:
-        provider_asset_order_data.to_sql(
-            "provider_asset_order",
-            conn,
-            if_exists="append",
-            index=False,
-        )
-        logger.info("Order data saved successfully.")
+    await save_provider_asset_order_data(provider_asset_order_data)
 
 
 @flow(log_prints=True)
@@ -368,7 +330,7 @@ async def pull_kraken_orders(
 ):
     logger = get_run_logger()
 
-    # Set the kraken provider ID if not provided.
+    # Use a fixed provider ID for Kraken.
     kraken_provider_id = 1
 
     # Validate the input pairs.
