@@ -1,10 +1,37 @@
-import requests
-import pandas as pd
-from prefect.blocks.system import Secret
-from prefect import flow, serve, task, get_run_logger
-from prefect.concurrency.sync import rate_limit
-from sqlalchemy import create_engine, text
+import os
 from datetime import datetime
+
+import pandas as pd
+import requests
+from prefect import flow, get_run_logger, serve, task
+from prefect.artifacts import create_table_artifact
+from prefect.blocks.system import Secret
+from prefect.concurrency.sync import rate_limit
+from sqlalchemy import create_engine, select
+from sqlalchemy.orm import Session
+
+from models import Provider, ProviderAsset, ProviderAssetOrder
+
+
+@task()
+async def get_api_url() -> str:
+    """
+    Get the base URL for the Kraken API.
+    """
+    return os.environ["PREFECT_API_URL"]
+
+
+@task()
+async def get_base_url() -> str:
+    """
+    Get the base URL for the Kraken API.
+    """
+    api_url: str = await get_api_url()
+    if not api_url:
+        raise ValueError("PREFECT_API_URL environment variable is not set.")
+    if api_url.endswith("/api"):
+        api_url = api_url[:-4]  # Remove the "/api" suffix
+    return api_url
 
 
 @task()
@@ -52,87 +79,302 @@ async def get_kraken_order_book(pair: str, count: int = 500) -> dict[str, object
 
 
 @task()
-async def get_max_datetime_from_order_book_postgres() -> datetime:
+async def get_provider_asset_data(
+    from_assets_ids: list[int], to_asset_ids: list[int]
+) -> pd.DataFrame:
     """
-    Get the maximum timestamp from the PostgreSQL trade book table.
+    Fetch provider asset data for the given asset pairs.
     """
-    query = "SELECT MAX(timestamp) FROM kraken_trade_book"
     url = await get_postgres_url()
     engine = create_engine(url)
-    with engine.connect() as conn:
-        max_datetime_str: str = conn.execute(text(query)).scalar()
-        if max_datetime_str is None:
-            return datetime.min
-        return pd.to_datetime(max_datetime_str).to_pydatetime()
+    logger = get_run_logger()
+    with Session(engine) as session:
+        stmt = select(ProviderAsset).where(
+            ProviderAsset.asset_id.in_(from_assets_ids + to_asset_ids),
+        )
+        df = pd.read_sql(stmt, session.bind)
+
+        # Check for any ids that are not found in the provider asset data, filter these out.
+        missing_from_assets = set(from_assets_ids) - set(df["asset_id"].to_list())
+        missing_to_assets = set(to_asset_ids) - set(df["asset_id"].to_list())
+        if missing_from_assets or missing_to_assets:
+            logger.warning(
+                f"Missing asset ids in provider data: from_assets: {missing_from_assets}, to_assets: {missing_to_assets}"
+            )
+            df = df[
+                df["from_asset_id"].isin(df["asset_id"].to_list())
+                & df["to_asset_id"].isin(df["asset_id"].to_list())
+            ]
+
+        # Join the provider asset data with the pairs DataFrame.
+        df = df.merge(
+            df[["asset_id", "asset_code"]],
+            left_on="from_asset_id",
+            right_on="asset_id",
+            how="left",
+        ).rename(columns={"asset_code": "from_asset_code"})
+        df = df.merge(
+            df[["asset_id", "asset_code"]],
+            left_on="to_asset_id",
+            right_on="asset_id",
+            how="left",
+        ).rename(columns={"asset_code": "to_asset_code"})
+        df["pair"] = df["from_asset_code"].str.upper() + df["to_asset_code"].str.upper()
+
+        return df
 
 
 @task()
-async def save_trade_book_data_to_postgres(trade_books: dict[str, object]):
-    logger = get_run_logger()
+async def get_kraken_provider_asset_order_data(
+    kraken_provider_id: int,
+    from_asset_ids: list[int],
+    to_asset_ids: list[int],
+    count: int = 500,
+) -> pd.DataFrame:
+    """
+    Fetch the latest asset order data from Kraken's public API.
+    """
 
-    # Define the PostgreSQL connection parameters.
+    # Get all dependent tasks data.
+    logger = get_run_logger()
     url = await get_postgres_url()
     engine = create_engine(url)
+    base_url = await get_base_url()
 
-    # Convert the trade book data to a pandas DataFrame.
+    # Fetch the asset pairs from the database.
+    with Session(engine) as session:
+        stmt = select(Provider).where(
+            Provider.id == kraken_provider_id,
+        )
+        provider: Provider = session.execute(stmt).scalar_one_or_none()
+        assets = provider.get_all_assets(
+            engine=engine, asset_ids=from_asset_ids + to_asset_ids
+        )
+
+    # Check if assets are found.
+    if assets is None or len(assets) == 0:
+        logger.warning("No provider asset data found for Kraken.")
+        return pd.DataFrame(
+            columns=[
+                "timestamp",
+                "provider_id",
+                "asset_id",
+                "order_type",
+                "price",
+                "volume",
+            ]
+        )
+
+    # Create a DataFrame for the provider asset data.
+    provider_asset_code_df = pd.DataFrame(
+        {
+            "provider_id": kraken_provider_id,
+            "asset_id": asset.asset_id,
+            "asset_code": asset.asset_code,
+        }
+        for asset in assets
+    )
+    provider_asset_code_df.drop_duplicates(inplace=True)
+
+    # Check for duplicates in the provider asset data.
+    duplicates = provider_asset_code_df.groupby("asset_id").filter(lambda x: len(x) > 1)
+    if not duplicates.empty:
+        artifact_id = await create_table_artifact(
+            key="provider-asset-code-duplicates",
+            table=duplicates.to_dict(orient="records"),
+            description="Duplicate asset codes in provider asset data",
+        )
+        logger.warning(
+            f"Found duplicates in provider asset data. Artifact created: {base_url}/artifacts/artifact/{artifact_id}"
+        )
+        provider_asset_code_df = provider_asset_code_df.drop_duplicates(
+            subset=["asset_id"]
+        )
+    provider_asset_id_to_code_map = {
+        row.asset_id: row.asset_code for row in provider_asset_code_df.itertuples()
+    }
+
+    # Create a DataFrame for the asset pairs.
+    pairs_df = pd.DataFrame(
+        {
+            "from_asset_id": pd.Series(from_asset_ids),
+            "to_asset_id": pd.Series(to_asset_ids),
+        }
+    )
+    pairs_df["pair"] = (
+        pairs_df["from_asset_id"].map(provider_asset_id_to_code_map).str.upper()
+        + pairs_df["to_asset_id"].map(provider_asset_id_to_code_map).str.upper()
+    )
+
+    # Create a list of pairs to fetch.
+    pairs = pairs_df["pair"].to_list()
+    logger.info(f"Fetching order book data for pairs: {pairs}")
+
+    # Fetch the order book data for each pair.
+    trade_books = {}
+    for pair in pairs:
+        trade_books.update(await get_kraken_order_book(pair, count=count))
+
+    # Convert the trade book data to a DataFrame.
     trade_book_df = pd.DataFrame()
     for pair, book in trade_books.items():
-        logger.info(f"Processing trade book for {pair}.")
         pair_df = pd.DataFrame(book["asks"], columns=["price", "volume", "timestamp"])
         pair_df["pair"] = pair
         pair_df["timestamp"] = pd.to_datetime(pair_df["timestamp"], unit="s")
+        pair_df["price"] = pd.to_numeric(pair_df["price"], errors="coerce")
+        pair_df["volume"] = pd.to_numeric(pair_df["volume"], errors="coerce")
         trade_book_df = pd.concat([trade_book_df, pair_df], ignore_index=True)
 
-    # Sort the DataFrame by pair and timestamp.
-    trade_book_df.sort_values(by=["pair", "timestamp"], inplace=True, ascending=False)
+    # Merge the trade book with the pair id data.
+    trade_book_df = trade_book_df.merge(
+        pairs_df[["pair", "from_asset_id", "to_asset_id"]],
+        on="pair",
+        how="inner",
+    )
+    trade_book_df["provider_id"] = kraken_provider_id
 
-    # Get max timestamp from postgres to avoid duplicates.
-    max_timestamp = await get_max_datetime_from_order_book_postgres()
-    logger.info(f"Maximum timestamp in PostgreSQL: {max_timestamp}")
+    return trade_book_df[
+        ["timestamp", "provider_id", "from_asset_id", "to_asset_id", "price", "volume"]
+    ]
 
-    # Filter out rows with timestamps less than the maximum timestamp.
-    trade_book_df = trade_book_df[trade_book_df["timestamp"] > max_timestamp]
-    if trade_book_df.empty:
-        logger.info("No new trade book data to save. Exiting.")
+
+@task()
+async def get_provider_asset_order_data(
+    provider_id: int,
+    from_asset_ids: list[int],
+    to_asset_ids: list[int],
+    start_datetime: datetime = None,
+    end_datetime: datetime = None,
+) -> pd.DataFrame:
+    """
+    Fetch the current provider asset order data from PostgreSQL.
+    """
+    url = await get_postgres_url()
+    engine = create_engine(url)
+    logger = get_run_logger()
+
+    with Session(engine) as session:
+        stmt = select(ProviderAssetOrder).where(
+            ProviderAssetOrder.provider_id == provider_id,
+            ProviderAssetOrder.from_asset_id.in_(from_asset_ids),
+            ProviderAssetOrder.to_asset_id.in_(to_asset_ids),
+        )
+        if start_datetime:
+            stmt = stmt.where(ProviderAssetOrder.timestamp >= start_datetime)
+        if end_datetime:
+            stmt = stmt.where(ProviderAssetOrder.timestamp <= end_datetime)
+        df = pd.read_sql(stmt, session.bind)
+
+        if df.empty:
+            logger.warning("No provider asset data found for the given IDs.")
+            return pd.DataFrame()
+
+        return df.drop(columns=["id"])
+
+
+@task()
+async def save_order_data(
+    new_provider_asset_order_data: pd.DataFrame,
+    current_provider_asset_data: pd.DataFrame,
+):
+    """
+    Save the provider asset order data to PostgreSQL.
+    """
+    logger = get_run_logger()
+
+    # Get the PostgreSQL connection string.
+    url = await get_postgres_url()
+    engine = create_engine(url)
+
+    # Check if the DataFrame is empty.
+    if new_provider_asset_order_data.empty:
+        logger.info("No new order data to save. Exiting.")
         return
-    logger.info(f"Number of new rows to save: {len(trade_book_df)}")
 
-    # Add new rows to the PostgreSQL database.
-    logger.info("Connecting to PostgreSQL database to save trade book data...")
+    # Compute the difference between the new and current data.
+    if not current_provider_asset_data.empty:
+        # Merge the new data with the current data to find differences.
+        logger.info("Merging new data with current data to find differences.")
+        merged_data = new_provider_asset_order_data.merge(
+            current_provider_asset_data,
+            on=new_provider_asset_order_data.columns.to_list(),
+            how="outer",
+            indicator=True,
+        )
+        # Filter for rows that are only in the new data.
+        provider_asset_order_data = merged_data[
+            merged_data["_merge"] == "left_only"
+        ].drop(columns=["_merge"])
+    else:
+        # If there is no current data, use the new data as is.
+        logger.info("No current data found. Using new data as is.")
+        provider_asset_order_data = new_provider_asset_order_data
+
+    # Save the data to PostgreSQL.
+    logger.info(
+        f"Saving {len(provider_asset_order_data)} new order records to PostgreSQL."
+    )
     with engine.connect() as conn:
-        logger.info("Connection established successfully.")
-        trade_book_df.to_sql(
-            "kraken_trade_book",
+        provider_asset_order_data.to_sql(
+            "provider_asset_order",
             conn,
             if_exists="append",
             index=False,
         )
+        logger.info("Order data saved successfully.")
 
 
 @flow(log_prints=True)
-async def pull_kraken_trade_book(pairs: list[str], count: int = 500):
+async def pull_kraken_orders(
+    from_asset_ids: list[int],
+    to_asset_ids: list[int],
+    kraken_provider_id: int = 1,
+    count: int = 500,
+):
     logger = get_run_logger()
 
-    # Fetch the trade book data from Kraken.
-    logger.info(
-        f"Starting to pull trade book data for pairs: {pairs} with count {count}."
+    # Validate the input pairs.
+    if not from_asset_ids or not to_asset_ids:
+        raise ValueError("from_assets and to_assets must be non-empty lists.")
+    if len(from_asset_ids) != len(to_asset_ids):
+        raise ValueError("from_assets and to_assets must have the same length.")
+
+    # Get new kraken provider asset orders.
+    logger.info("Fetching new provider asset data...")
+    new_provider_asset_order_data: pd.DataFrame = (
+        await get_kraken_provider_asset_order_data(
+            kraken_provider_id, from_asset_ids, to_asset_ids, count=count
+        )
     )
-    trade_books: dict[str, object] = {}
-    for pair in pairs:
-        logger.info(f"Fetching trade book for {pair}.")
-        trade_books.update(await get_kraken_order_book(pair, count))
-    logger.info("All trade books fetched successfully.")
+    logger.info(
+        f"Fetched {len(new_provider_asset_order_data)} new provider asset orders."
+    )
 
-    # Get maximum timestamp from the trade book table.
+    # Get current provider asset data.
+    logger.info("Fetching current provider asset data...")
+    current_provider_asset_data: pd.DataFrame = await get_provider_asset_order_data(
+        kraken_provider_id,
+        from_asset_ids,
+        to_asset_ids,
+        start_datetime=datetime.now() - pd.Timedelta(minutes=10),
+    )
+    logger.info(
+        f"Fetched {len(current_provider_asset_data)} current provider asset orders."
+    )
 
-    # Save the trade book data to PostgreSQL.
-    logger.info("Saving trade book data to PostgreSQL.")
-    await save_trade_book_data_to_postgres(trade_books)
+    # Save the provider asset data to PostgreSQL.
+    logger.info("Saving provider asset data to PostgreSQL...")
+    await save_order_data(new_provider_asset_order_data, current_provider_asset_data)
 
 
 if __name__ == "__main__":
-    pull_kraken_trade_book_deployment = pull_kraken_trade_book.to_deployment(
-        name="pull_kraken_trade_book_debug",
-        parameters={"pairs": ["XBTUSD", "XBTEUR"], "count": 500},  # Default parameters
+    pull_kraken_orders_deployment = pull_kraken_orders.to_deployment(
+        name="pull_kraken_orders_debug",
+        parameters={
+            "from_asset_ids": [1],
+            "to_asset_ids": [2],
+            "kraken_provider_id": 1,
+            "count": 500,
+        },  # Default parameters
     )
-    serve(pull_kraken_trade_book_deployment)
+    serve(pull_kraken_orders_deployment)

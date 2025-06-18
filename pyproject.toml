@@ -5,9 +5,6 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "dask>=2025.5.1",
-    "ipykernel>=6.29.5",
-    "kagglehub>=0.3.12",
     "nltk>=3.9.1",
     "pandas>=2.2.3",
     "prefect[github]>=3.4.5",
@@ -19,10 +16,15 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "ipykernel>=6.29.5",
     "ipywidgets>=8.1.7",
     "jupyter>=1.1.1",
     "pandas-profiling>=3.2.0",
     "ruff>=0.11.13",
     "tqdm>=4.67.1",
     "widgetsnbextension>=4.0.14",
+]
+test = [
+    "pytest>=8.4.0",
+    "pytest-asyncio>=1.0.0",
 ]
