@@ -32,8 +32,8 @@ if __name__ == "__main__":
         name="pull_kraken_orders",
         work_pool_name="kubernetes-default",
         parameters={
-            "from_asset_ids": [1],
-            "to_asset_ids": [2],
+            "from_asset_ids": [1, 3, 3],
+            "to_asset_ids": [2, 2, 1],
         },
         concurrency_limit=ConcurrencyLimitConfig(
             limit=1, collision_strategy=ConcurrencyLimitStrategy.CANCEL_NEW

@@ -382,8 +382,8 @@ if __name__ == "__main__":
         name="pull_kraken_orders_debug",
         concurrency_limit=1,
         parameters={
-            "from_asset_ids": [1],
-            "to_asset_ids": [2],
+            "from_asset_ids": [1, 3, 3],
+            "to_asset_ids": [2, 2, 1],
         },
     )
     serve(pull_kraken_orders_deployment)
