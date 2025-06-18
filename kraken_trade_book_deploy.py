@@ -27,8 +27,7 @@ if __name__ == "__main__":
         parameters={
             "from_asset_ids": [1],
             "to_asset_ids": [2],
-            "count": 500,
-        },  # Default parameters
+        },
         concurrency_limit=ConcurrencyLimitConfig(
             limit=1, collision_strategy=ConcurrencyLimitStrategy.CANCEL_NEW
         ),
