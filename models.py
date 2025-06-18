@@ -173,3 +173,31 @@ class ProviderAssetOrder(Base):
 
     def __repr__(self):
         return f"{ProviderAssetOrder.__name__}(id={self.id}, timestamp={self.timestamp}, provider_id={self.provider_id}, from_asset_id={self.from_asset_id}, to_asset_id={self.to_asset_id}, price={self.price}, volume={self.volume})"
+
+
+class ProviderAssetMarket(Base):
+    __tablename__ = "provider_asset_market"
+
+    timestamp: Mapped[datetime.datetime] = mapped_column(
+        nullable=False, primary_key=True
+    )
+    provider_id: Mapped[int] = mapped_column(
+        ForeignKey("provider.id"), nullable=False, primary_key=True
+    )
+    asset_id: Mapped[int] = mapped_column(
+        ForeignKey("asset.id"), nullable=False, primary_key=True
+    )
+    close: Mapped[float] = mapped_column(nullable=True, comment="Closing price")
+    open: Mapped[float] = mapped_column(nullable=True, comment="Opening price")
+    high: Mapped[float] = mapped_column(nullable=True, comment="Highest price")
+    low: Mapped[float] = mapped_column(nullable=True, comment="Lowest price")
+    volume: Mapped[float] = mapped_column(nullable=True, comment="Volume traded")
+    best_bid: Mapped[float] = mapped_column(nullable=True, comment="Best bid price")
+    best_ask: Mapped[float] = mapped_column(nullable=True, comment="Best ask price")
+
+    def __repr__(self):
+        return f"{ProviderAssetMarket.__name__}(id={self.id}, provider_id={self.provider_id}, asset_id={self.asset_id}, market_type={self.market_type})"
+
+
+if __name__ == "__main__":
+    Base.metadata.create_all()  # Create all tables in the database
