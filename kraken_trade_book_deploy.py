@@ -30,7 +30,7 @@ if __name__ == "__main__":
             "count": 500,
         },  # Default parameters
         concurrency_limit=ConcurrencyLimitConfig(
-            limit=1, collision_strategy=ConcurrencyLimitStrategy.ENQUEUE
+            limit=1, collision_strategy=ConcurrencyLimitStrategy.CANCEL_NEW
         ),
         schedule=Interval(30, anchor_date=datetime(2000, 1, 1, 0, 0, 0)),
         build=False,
