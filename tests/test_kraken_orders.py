@@ -37,7 +37,7 @@ def mock_postgres():
         from_asset_ids: list[int],
         to_asset_ids: list[int],
         count: int = 500,
-        lookback_hours: int = 1,
+        lookback_seconds: int = 60,
     ):
         # Mock implementation for testing
         return pd.DataFrame(
