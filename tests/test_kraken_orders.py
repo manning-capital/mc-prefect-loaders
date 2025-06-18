@@ -11,6 +11,7 @@ from unittest.mock import patch
 from src.kraken_trade_book_flows import (
     pull_kraken_orders,
 )
+from tests.mock_database import MockDatabase
 
 from prefect.testing.utilities import prefect_test_harness
 from prefect.logging import disable_run_logger
@@ -23,14 +24,15 @@ def prefect_test_fixture():
             yield
 
 
-@pytest.fixture(autouse=True)
-def mock_postgres():
+@pytest.fixture(autouse=True, scope="session")
+def mock_database():
     """
     Mock fixture for PostgreSQL database connection.
     This is a placeholder and should be replaced with actual database mocking logic.
     """
 
     # Mock implementations of the functions that interact with the database
+    db = MockDatabase()
 
     async def mock_get_kraken_provider_asset_order_data(
         kraken_provider_id: int,
@@ -70,7 +72,7 @@ def mock_postgres():
             ]
         )
 
-    async def mock_save_provider_asset_order_data(toset: pd.DataFrame) -> None:
+    async def mock_save_provider_asset_order_data(to_set: pd.DataFrame) -> None:
         # Mock implementation for testing
         return None
 
@@ -89,11 +91,11 @@ def mock_postgres():
             mock_save_provider_asset_order_data,
         ),
     ):
-        yield
+        yield db
 
 
 @pytest.mark.asyncio
-async def test_pull_when_both_database_and_kraken_is_empty():
+async def test_pull_when_both_database_and_kraken_is_empty(mock_database: MockDatabase):
     await pull_kraken_orders(
         from_asset_ids=[1],
         to_asset_ids=[2],
