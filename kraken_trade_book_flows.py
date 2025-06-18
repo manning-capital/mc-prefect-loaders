@@ -130,6 +130,7 @@ async def get_kraken_provider_asset_order_data(
     from_asset_ids: list[int],
     to_asset_ids: list[int],
     count: int = 500,
+    lookback_hours: int = 1,
 ) -> pd.DataFrame:
     """
     Fetch the latest asset order data from Kraken's public API.
@@ -259,6 +260,16 @@ async def get_kraken_provider_asset_order_data(
         [asks_trade_book_df, bids_trade_book_df], ignore_index=True
     )
 
+    # Drop order data that is older 1 hour.
+    if not trade_book_df.empty:
+        trade_book_df = trade_book_df[
+            trade_book_df["timestamp"]
+            >= (datetime.now() - pd.Timedelta(hours=lookback_hours))
+        ]
+        logger.info(
+            f"Filtered new provider asset orders to {len(trade_book_df)} records from the last day."
+        )
+
     return trade_book_df[
         ["timestamp", "provider_id", "from_asset_id", "to_asset_id", "price", "volume"]
     ]
@@ -369,22 +380,16 @@ async def pull_kraken_orders(
     logger.info("Fetching new provider asset data...")
     new_provider_asset_order_data: pd.DataFrame = (
         await get_kraken_provider_asset_order_data(
-            kraken_provider_id, from_asset_ids, to_asset_ids, count=count
+            kraken_provider_id,
+            from_asset_ids,
+            to_asset_ids,
+            count=count,
+            lookback_hours=1,
         )
     )
     logger.info(
         f"Fetched {len(new_provider_asset_order_data)} new provider asset orders."
     )
-
-    # Drop order data that is older 1 hour.
-    if not new_provider_asset_order_data.empty:
-        new_provider_asset_order_data = new_provider_asset_order_data[
-            new_provider_asset_order_data["timestamp"]
-            >= (datetime.now() - pd.Timedelta(hours=1))
-        ]
-        logger.info(
-            f"Filtered new provider asset orders to {len(new_provider_asset_order_data)} records from the last day."
-        )
 
     # Get current provider asset data.
     logger.info("Fetching current provider asset data...")
