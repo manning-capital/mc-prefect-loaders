@@ -18,7 +18,5 @@ jobs:
       - name: Push the Docker image
         uses: docker/build-push-action@v4
         with:
-          context: .
-          file: Dockerfile
           push: true
-          tags: ${{ vars.DOCKERHUB_USERNAME }}/${{github.event.repository.name}}:latest
+          tags: ${{ vars.DOCKERHUB_USERNAME }}/${{ github.event.repository.name }}:latest
