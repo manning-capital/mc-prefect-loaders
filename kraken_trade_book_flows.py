@@ -216,22 +216,48 @@ async def get_kraken_provider_asset_order_data(
         trade_books.update(await get_kraken_order_book(pair, count=count))
 
     # Convert the trade book data to a DataFrame.
-    trade_book_df = pd.DataFrame()
+    asks_trade_book_df = pd.DataFrame()
     for pair, book in trade_books.items():
         pair_df = pd.DataFrame(book["asks"], columns=["price", "volume", "timestamp"])
         pair_df["pair"] = pair
         pair_df["timestamp"] = pd.to_datetime(pair_df["timestamp"], unit="s")
         pair_df["price"] = pd.to_numeric(pair_df["price"], errors="coerce")
         pair_df["volume"] = pd.to_numeric(pair_df["volume"], errors="coerce")
-        trade_book_df = pd.concat([trade_book_df, pair_df], ignore_index=True)
+        asks_trade_book_df = pd.concat([asks_trade_book_df, pair_df], ignore_index=True)
 
     # Merge the trade book with the pair id data.
-    trade_book_df = trade_book_df.merge(
+    asks_trade_book_df = asks_trade_book_df.merge(
         pairs_df[["pair", "from_asset_id", "to_asset_id"]],
         on="pair",
         how="inner",
     )
-    trade_book_df["provider_id"] = kraken_provider_id
+    asks_trade_book_df["provider_id"] = kraken_provider_id
+
+    # Convert bids trade book to a DataFrame.
+    bids_trade_book_df = pd.DataFrame()
+    for pair, book in trade_books.items():
+        pair_df = pd.DataFrame(book["bids"], columns=["price", "volume", "timestamp"])
+        pair_df["pair"] = pair
+        pair_df["timestamp"] = pd.to_datetime(pair_df["timestamp"], unit="s")
+        pair_df["price"] = pd.to_numeric(pair_df["price"], errors="coerce")
+        pair_df["volume"] = pd.to_numeric(pair_df["volume"], errors="coerce")
+        bids_trade_book_df = pd.concat([bids_trade_book_df, pair_df], ignore_index=True)
+
+    # Merge the bids trade book with the pair id data.
+    bids_trade_book_df = bids_trade_book_df.merge(
+        pairs_df[["pair", "from_asset_id", "to_asset_id"]],
+        on="pair",
+        how="inner",
+    )
+    bids_trade_book_df["provider_id"] = kraken_provider_id
+    temp = bids_trade_book_df["from_asset_id"].copy()
+    bids_trade_book_df["from_asset_id"] = bids_trade_book_df["to_asset_id"]
+    bids_trade_book_df["to_asset_id"] = temp
+
+    # Combine asks and bids trade book data.
+    trade_book_df = pd.concat(
+        [asks_trade_book_df, bids_trade_book_df], ignore_index=True
+    )
 
     return trade_book_df[
         ["timestamp", "provider_id", "from_asset_id", "to_asset_id", "price", "volume"]
