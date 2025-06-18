@@ -365,10 +365,11 @@ async def save_order_data(
 async def pull_kraken_orders(
     from_asset_ids: list[int],
     to_asset_ids: list[int],
-    kraken_provider_id: int = 1,
-    count: int = 500,
 ):
     logger = get_run_logger()
+
+    # Set the kraken provider ID if not provided.
+    kraken_provider_id = 1
 
     # Validate the input pairs.
     if not from_asset_ids or not to_asset_ids:
@@ -383,7 +384,7 @@ async def pull_kraken_orders(
             kraken_provider_id,
             from_asset_ids,
             to_asset_ids,
-            count=count,
+            count=500,
             lookback_hours=1,
         )
     )
@@ -415,8 +416,6 @@ if __name__ == "__main__":
         parameters={
             "from_asset_ids": [1],
             "to_asset_ids": [2],
-            "kraken_provider_id": 1,
-            "count": 500,
-        },  # Default parameters
+        },
     )
     serve(pull_kraken_orders_deployment)
