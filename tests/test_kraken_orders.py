@@ -8,7 +8,7 @@ import pytest
 import pandas as pd
 from datetime import datetime
 from unittest.mock import patch
-from kraken_trade_book_flows import (
+from src.kraken_trade_book_flows import (
     pull_kraken_orders,
 )
 
@@ -77,15 +77,15 @@ def mock_postgres():
     # Patch the functions with mock implementations
     with (
         patch(
-            "kraken_trade_book_flows.get_kraken_provider_asset_order_data",
+            "src.kraken_trade_book_flows.get_kraken_provider_asset_order_data",
             mock_get_kraken_provider_asset_order_data,
         ),
         patch(
-            "kraken_trade_book_flows.get_provider_asset_order_data",
+            "src.kraken_trade_book_flows.get_provider_asset_order_data",
             mock_get_provider_asset_order_data,
         ),
         patch(
-            "kraken_trade_book_flows.save_provider_asset_order_data",
+            "src.kraken_trade_book_flows.save_provider_asset_order_data",
             mock_save_provider_asset_order_data,
         ),
     ):
