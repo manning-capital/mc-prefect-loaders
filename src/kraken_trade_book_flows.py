@@ -10,7 +10,7 @@ from prefect.concurrency.sync import rate_limit
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
-from models import Provider, ProviderAssetOrder
+from src.models import Provider, ProviderAssetOrder
 
 INTERVAL_SECONDS = 30
 

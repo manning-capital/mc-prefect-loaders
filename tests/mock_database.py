@@ -6,7 +6,7 @@ from typing import List, Tuple, Optional
 # Ensure the parent directory is in the Python path.
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from models import (
+from src.models import (
     Provider,
     Asset,
     ProviderAssetOrder,

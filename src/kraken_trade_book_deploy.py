@@ -9,7 +9,7 @@ from prefect.client.schemas.objects import (
     ConcurrencyLimitConfig,
     ConcurrencyLimitStrategy,
 )
-from kraken_trade_book_flows import INTERVAL_SECONDS
+from src.kraken_trade_book_flows import INTERVAL_SECONDS
 
 if __name__ == "__main__":
     source = GitRepository(
@@ -18,7 +18,7 @@ if __name__ == "__main__":
         branch="main",
     )
     flow.from_source(
-        source=source, entrypoint="kraken_trade_book_flows.py:pull_kraken_orders"
+        source=source, entrypoint="src/kraken_trade_book_flows.py:pull_kraken_orders"
     ).deploy(
         image=DockerImage(
             name="glynfinck/sentiment", tag="latest", dockerfile="Dockerfile"
