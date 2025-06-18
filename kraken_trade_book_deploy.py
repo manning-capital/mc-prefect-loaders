@@ -9,6 +9,7 @@ from prefect.client.schemas.objects import (
     ConcurrencyLimitConfig,
     ConcurrencyLimitStrategy,
 )
+from kraken_trade_book_flows import INTERVAL_SECONDS
 
 if __name__ == "__main__":
     source = GitRepository(
@@ -31,7 +32,7 @@ if __name__ == "__main__":
         concurrency_limit=ConcurrencyLimitConfig(
             limit=1, collision_strategy=ConcurrencyLimitStrategy.CANCEL_NEW
         ),
-        schedule=Interval(30, anchor_date=datetime(2000, 1, 1, 0, 0, 0)),
+        schedule=Interval(INTERVAL_SECONDS, anchor_date=datetime(2000, 1, 1, 0, 0, 0)),
         build=False,
         push=False,
     )

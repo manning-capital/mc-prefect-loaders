@@ -12,6 +12,8 @@ from sqlalchemy.orm import Session
 
 from models import Provider, ProviderAssetOrder
 
+INTERVAL_SECONDS = 30
+
 
 @task()
 async def get_api_url() -> str:
@@ -84,7 +86,7 @@ async def get_kraken_provider_asset_order_data(
     from_asset_ids: list[int],
     to_asset_ids: list[int],
     count: int = 500,
-    lookback_hours: int = 1,
+    lookback_seconds: int = 60,
 ) -> pd.DataFrame:
     """
     Fetch the latest asset order data from Kraken's public API.
@@ -218,7 +220,7 @@ async def get_kraken_provider_asset_order_data(
     if not trade_book_df.empty:
         trade_book_df = trade_book_df[
             trade_book_df["timestamp"]
-            >= (datetime.now() - pd.Timedelta(hours=lookback_hours))
+            >= (datetime.now() - pd.Timedelta(seconds=lookback_seconds))
         ]
         logger.info(
             f"Filtered new provider asset orders to {len(trade_book_df)} records from the last day."
@@ -347,7 +349,7 @@ async def pull_kraken_orders(
             from_asset_ids,
             to_asset_ids,
             count=500,
-            lookback_hours=1,
+            lookback_seconds=INTERVAL_SECONDS * 10,  # Look back 10 intervals,
         )
     )
     logger.info(
