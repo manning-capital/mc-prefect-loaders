@@ -3,7 +3,9 @@ import sys
 from datetime import datetime
 
 # Ensure the parent directory is in the Python path.
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+)
 
 import pandas as pd
 import requests

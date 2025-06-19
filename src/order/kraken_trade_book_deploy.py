@@ -3,7 +3,9 @@ import sys
 from datetime import datetime
 
 # Ensure the parent directory is in the Python path.
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+)
 
 from prefect import flow
 from prefect.client.schemas.objects import (
@@ -24,7 +26,8 @@ if __name__ == "__main__":
         branch="main",
     )
     flow.from_source(
-        source=source, entrypoint="src/kraken_trade_book_flows.py:pull_kraken_orders"
+        source=source,
+        entrypoint="src/order/kraken_trade_book_flows.py:pull_kraken_orders",
     ).deploy(
         image=DockerImage(
             name="glynfinck/sentiment", tag="latest", dockerfile="Dockerfile"
