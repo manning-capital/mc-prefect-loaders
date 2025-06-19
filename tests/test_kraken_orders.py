@@ -231,3 +231,147 @@ async def test_pull_when_database_has_multiple_records(
     # Verify that no data was pulled from the mock database.
     assert mock_database.get_provider_asset_order_count() == 2
     assert mock_data_source.get_provider_asset_order_count() == 2
+
+
+@pytest.mark.asyncio
+async def test_pull_with_multiple_from_and_to_asset_ids(
+    mock_database: MockDatabase, mock_data_source: MockDatabase
+):
+    # Clear any existing data in the mock database
+    mock_database.clear_provider_asset_order_data()
+    mock_data_source.clear_provider_asset_order_data()
+
+    # Add some mock data to the mock data source.
+    use_time = datetime.now(timezone.utc) - timedelta(seconds=5)
+    mock_data_source.add_provider_asset_order_data(
+        timestamp=use_time,
+        provider_id=1,
+        from_asset_id=1,
+        to_asset_id=2,
+        price=100.0,
+        volume=10.0,
+    )
+    mock_data_source.add_provider_asset_order_data(
+        timestamp=use_time - timedelta(seconds=1),
+        provider_id=1,
+        from_asset_id=3,
+        to_asset_id=4,
+        price=101.0,
+        volume=11.0,
+    )
+
+    # Call the pull_kraken_orders function with multiple from and to asset IDs
+    await pull_kraken_orders(
+        from_asset_ids=[1, 3],
+        to_asset_ids=[2, 4],
+    )
+
+    # Verify that no data was pulled from the mock database.
+    assert mock_database.get_provider_asset_order_count() == 2
+    assert mock_data_source.get_provider_asset_order_count() == 2
+
+
+@pytest.mark.asyncio
+async def test_pull_with_multiple_existing_duplicates_with_one_new_duplicate_and_non_duplicates(
+    mock_database: MockDatabase, mock_data_source: MockDatabase
+):
+    # Clear any existing data in the mock database
+    mock_database.clear_provider_asset_order_data()
+    mock_data_source.clear_provider_asset_order_data()
+
+    # Add some mock data to the mock data source.
+    use_time = datetime.now(timezone.utc) - timedelta(seconds=5)
+    mock_data_source.add_provider_asset_order_data(
+        timestamp=use_time,
+        provider_id=1,
+        from_asset_id=1,
+        to_asset_id=2,
+        price=100.0,
+        volume=10.0,
+    )
+    mock_data_source.add_provider_asset_order_data(
+        timestamp=use_time,
+        provider_id=1,
+        from_asset_id=1,
+        to_asset_id=2,
+        price=100.0,
+        volume=10.0,
+    )
+    mock_data_source.add_provider_asset_order_data(
+        timestamp=use_time - timedelta(seconds=1),
+        provider_id=1,
+        from_asset_id=1,
+        to_asset_id=2,
+        price=101.0,
+        volume=11.0,
+    )
+
+    # Add the same data to the mock database.
+    mock_database.add_provider_asset_order_data(
+        timestamp=use_time,
+        provider_id=1,
+        from_asset_id=1,
+        to_asset_id=2,
+        price=100.0,
+        volume=10.0,
+    )
+
+    # Ensure the state of the mock database and data source before pulling.
+    assert mock_database.get_provider_asset_order_count() == 1
+    assert mock_data_source.get_provider_asset_order_count() == 3
+
+    # Call the pull_kraken_orders function with empty data
+    await pull_kraken_orders(
+        from_asset_ids=[1],
+        to_asset_ids=[2],
+    )
+
+    # Verify that no data was pulled from the mock database.
+    assert mock_database.get_provider_asset_order_count() == 2
+    assert mock_data_source.get_provider_asset_order_count() == 3
+
+
+@pytest.mark.asyncio
+async def test_pull_with_multiple_new_duplicates_and_non_duplicates(
+    mock_database: MockDatabase, mock_data_source: MockDatabase
+):
+    # Clear any existing data in the mock database
+    mock_database.clear_provider_asset_order_data()
+    mock_data_source.clear_provider_asset_order_data()
+
+    # Add some mock data to the mock data source.
+    use_time = datetime.now(timezone.utc) - timedelta(seconds=5)
+    mock_data_source.add_provider_asset_order_data(
+        timestamp=use_time,
+        provider_id=1,
+        from_asset_id=1,
+        to_asset_id=2,
+        price=100.0,
+        volume=10.0,
+    )
+    mock_data_source.add_provider_asset_order_data(
+        timestamp=use_time,
+        provider_id=1,
+        from_asset_id=1,
+        to_asset_id=2,
+        price=100.0,
+        volume=10.0,
+    )
+    mock_data_source.add_provider_asset_order_data(
+        timestamp=use_time - timedelta(seconds=2),
+        provider_id=1,
+        from_asset_id=3,
+        to_asset_id=4,
+        price=102.0,
+        volume=12.0,
+    )
+
+    # Call the pull_kraken_orders function with empty data
+    await pull_kraken_orders(
+        from_asset_ids=[1, 3],
+        to_asset_ids=[2, 4],
+    )
+
+    # Verify that no data was pulled from the mock database.
+    assert mock_database.get_provider_asset_order_count() == 3
+    assert mock_data_source.get_provider_asset_order_count() == 3
