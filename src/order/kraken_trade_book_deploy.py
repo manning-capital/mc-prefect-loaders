@@ -15,7 +15,7 @@ from prefect.runner.storage import GitRepository
 from prefect.schedules import Interval
 from prefect_github import GitHubCredentials
 
-from src.kraken_trade_book_flows import INTERVAL_SECONDS
+from src.order.kraken_trade_book_flows import INTERVAL_SECONDS
 
 if __name__ == "__main__":
     source = GitRepository(
