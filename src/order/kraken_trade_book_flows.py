@@ -1,12 +1,5 @@
 import os
-import sys
 from datetime import datetime
-
-# Ensure the parent directory is in the Python path.
-sys.path.append(
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-)
-
 import pandas as pd
 import requests
 from prefect import flow, get_run_logger, serve, task
@@ -16,7 +9,7 @@ from prefect.concurrency.sync import rate_limit
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
-from src.order.models import Provider, ProviderAssetOrder
+from mcpdb.tables import Provider, ProviderAssetOrder
 
 INTERVAL_SECONDS = 30
 
