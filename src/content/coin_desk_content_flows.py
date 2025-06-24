@@ -1,7 +1,7 @@
 import pandas as pd
 import datetime as dt
 from prefect import flow, task, get_run_logger
-from src.utils.tasks import get_base_url, get_postgres_url
+from src.utils.tasks import get_postgres_url
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
