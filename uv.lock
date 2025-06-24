@@ -1351,7 +1351,7 @@ wheels = [
 
 [[package]]
 name = "mc-postgres-db"
-version = "1.0.7"
+version = "1.0.8"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "alembic" },
@@ -1359,9 +1359,9 @@ dependencies = [
     { name = "ruff" },
     { name = "sqlalchemy" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/88/63/5d5a310371c401683e289e99c6ff0f5d3270d07dbe1c3f770396ef9e6ee2/mc_postgres_db-1.0.7.tar.gz", hash = "sha256:b03e24d5033282c282e0f3d1c00aec3ae705918b988286bb0a01372d019c161a", size = 2693 }
+sdist = { url = "https://files.pythonhosted.org/packages/af/45/02870a94fb6a59e26135dcbe39c4b0cb581fc2b9691143fd62a02d118faf/mc_postgres_db-1.0.8.tar.gz", hash = "sha256:f40c4310099a5caddb050b86d5735c59fc5fadc7e881a9b1e754ac2e89869271", size = 2688 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e9/05/ae91773dd8132baa9aedef977bb9a10e1f0107f9d0186fb9216ba2c4d770/mc_postgres_db-1.0.7-py3-none-any.whl", hash = "sha256:785fcbd24f16ee42219b0a7cdf04757fc80c7e7e444ef6eec860e66fb0a1176f", size = 2792 },
+    { url = "https://files.pythonhosted.org/packages/cf/b9/e6c831170d085a62a466704dce3ce8a526b7098ca9a719e7861f2b76b396/mc_postgres_db-1.0.8-py3-none-any.whl", hash = "sha256:1fd6774259359325dae597c324ba66b378bc1c9ce5d0f30641bc88974c5ed20f", size = 2791 },
 ]
 
 [[package]]
@@ -2719,7 +2719,7 @@ test = [
 
 [package.metadata]
 requires-dist = [
-    { name = "mc-postgres-db", specifier = ">=1.0.7" },
+    { name = "mc-postgres-db", specifier = "==1.0.8" },
     { name = "nltk", specifier = ">=3.9.1" },
     { name = "pandas", specifier = ">=2.2.3" },
     { name = "prefect", extras = ["github"], specifier = ">=3.4.5" },
