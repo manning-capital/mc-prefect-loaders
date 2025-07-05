@@ -20,19 +20,22 @@ from prefect_github import GitHubCredentials
 from src.order.kraken_trade_book_flows import INTERVAL_SECONDS
 
 if __name__ == "__main__":
+    branch = os.getenv("GITHUB_BRANCH", "main")
     source = GitRepository(
-        url="https://github.com/glynfinck/sentiment",
+        url="https://github.com/manning-capital/mc-prefect-loaders",
         credentials=GitHubCredentials.load("github-credentials"),
-        branch="main",
+        branch=branch,
     )
     flow.from_source(
         source=source,
         entrypoint="src/order/kraken_trade_book_flows.py:pull_kraken_orders",
     ).deploy(
         image=DockerImage(
-            name="glynfinck/sentiment", tag="latest", dockerfile="Dockerfile"
+            name="ghcr.io/manning-capital/mc-prefect-loaders",
+            tag=branch,
+            dockerfile="Dockerfile",
         ),
-        name="pull_kraken_orders",
+        name="pull_kraken_orders_test",
         work_pool_name="kubernetes-default",
         parameters={
             "from_asset_ids": [1, 3, 3],
@@ -41,7 +44,7 @@ if __name__ == "__main__":
         concurrency_limit=ConcurrencyLimitConfig(
             limit=1, collision_strategy=ConcurrencyLimitStrategy.CANCEL_NEW
         ),
-        schedule=Interval(INTERVAL_SECONDS, anchor_date=datetime(2000, 1, 1, 0, 0, 0)),
+        # schedule=Interval(INTERVAL_SECONDS, anchor_date=datetime(2000, 1, 1, 0, 0, 0)),
         build=False,
         push=False,
     )

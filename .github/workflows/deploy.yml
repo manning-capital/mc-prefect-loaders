@@ -7,6 +7,7 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
+  GITHUB_BRANCH: ${{ github.ref_name }}
 
 jobs:
   push:
@@ -62,3 +63,10 @@ jobs:
           subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME}}
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
+
+      # Find all python files in the src folder that end in "*_deploy.py" and run in the uv environment.
+      - name: Deploy Prefect flows
+        run: find src -type f -name "*_deploy.py" -exec uv run {} \;
+        env:
+          PREFECT_API_URL: http://prefect.manningcapital.co.uk/api
+          GITHUB_BRANCH: ${{ env.GITHUB_BRANCH }}
