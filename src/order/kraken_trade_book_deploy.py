@@ -35,7 +35,7 @@ if __name__ == "__main__":
             tag=branch,
             dockerfile="Dockerfile",
         ),
-        name="pull_kraken_orders_test",
+        name="pull_kraken_orders",
         work_pool_name="kubernetes-default",
         parameters={
             "from_asset_ids": [1, 3, 3],
@@ -44,7 +44,7 @@ if __name__ == "__main__":
         concurrency_limit=ConcurrencyLimitConfig(
             limit=1, collision_strategy=ConcurrencyLimitStrategy.CANCEL_NEW
         ),
-        # schedule=Interval(INTERVAL_SECONDS, anchor_date=datetime(2000, 1, 1, 0, 0, 0)),
+        schedule=Interval(INTERVAL_SECONDS, anchor_date=datetime(2000, 1, 1, 0, 0, 0)),
         build=False,
         push=False,
     )
