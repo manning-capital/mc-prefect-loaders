@@ -68,5 +68,5 @@ jobs:
       - name: Deploy Prefect flows
         run: find src -type f -name "*_deploy.py" -exec uv run {} \;
         env:
-          PREFECT_API_URL: http://prefect.manningcapital.co.uk/api
+          PREFECT_API_URL: https://prefect.manningcapital.co.uk/api
           GITHUB_BRANCH: ${{ env.GITHUB_BRANCH }}
