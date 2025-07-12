@@ -14,7 +14,7 @@ from prefect.client.schemas.objects import (
 )
 from prefect.docker import DockerImage
 from prefect.runner.storage import GitRepository
-from prefect.schedules import Interval
+from prefect.schedules import Interval, Schedule
 from prefect_github import GitHubCredentials
 
 from src.order.kraken_trade_book_flows import INTERVAL_SECONDS
@@ -45,6 +45,29 @@ if __name__ == "__main__":
             limit=1, collision_strategy=ConcurrencyLimitStrategy.CANCEL_NEW
         ),
         schedule=Interval(INTERVAL_SECONDS, anchor_date=datetime(2000, 1, 1, 0, 0, 0)),
+        build=False,
+        push=False,
+    )
+    flow.from_source(
+        source=source,
+        entrypoint="src/order/kraken_trade_book_flows.py:clear_orders",
+    ).deploy(
+        image=DockerImage(
+            name="ghcr.io/manning-capital/mc-prefect-loaders",
+            tag=branch,
+            dockerfile="Dockerfile",
+        ),
+        name="clear_orders",
+        work_pool_name="kubernetes-default",
+        parameters={
+            "keep_days": 30,
+        },
+        concurrency_limit=ConcurrencyLimitConfig(
+            limit=1, collision_strategy=ConcurrencyLimitStrategy.CANCEL_NEW
+        ),
+        schedule=Schedule(
+            cron="0 0 * * *",  # Daily at midnight
+        ),
         build=False,
         push=False,
     )

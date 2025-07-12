@@ -1,5 +1,5 @@
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 import pandas as pd
 import requests
 from prefect import flow, get_run_logger, serve, task
@@ -372,6 +372,47 @@ async def pull_kraken_orders(
     await save_order_data(new_provider_asset_order_data, current_provider_asset_data)
 
 
+@task()
+async def delete_old_orders(cutoff_date: datetime):
+    """
+    Delete old orders from the database that are older than the cutoff date.
+    """
+    url = await get_postgres_url()
+    engine = create_engine(url)
+    logger = get_run_logger()
+
+    with Session(engine) as session:
+        stmt = select(ProviderAssetOrder).where(
+            ProviderAssetOrder.timestamp < cutoff_date
+        )
+        old_orders = session.execute(stmt).scalars().all()
+
+        if not old_orders:
+            logger.info("No old orders to delete.")
+            return
+
+        for order in old_orders:
+            session.delete(order)
+
+        session.commit()
+        logger.info(f"Deleted {len(old_orders)} old orders older than {cutoff_date}.")
+
+
+@flow()
+async def clear_orders(
+    keep_days: int = 30,
+):
+    logger = get_run_logger()
+
+    # Get the cutoff date for old orders.
+    cutoff_date = (datetime.now() - timedelta(days=keep_days)).date()
+
+    # Delete old orders from the database.
+    await delete_old_orders(cutoff_date)
+
+    logger.info(f"Cleared orders older than {keep_days} days.")
+
+
 if __name__ == "__main__":
     pull_kraken_orders_deployment = pull_kraken_orders.to_deployment(
         name="pull_kraken_orders_debug",
@@ -381,4 +422,11 @@ if __name__ == "__main__":
             "to_asset_ids": [2, 2, 1],
         },
     )
-    serve(pull_kraken_orders_deployment)
+    clear_orders_deployment = clear_orders.to_deployment(
+        name="clear_orders_debug",
+        concurrency_limit=1,
+        parameters={
+            "keep_days": 30,
+        },
+    )
+    serve(pull_kraken_orders_deployment, clear_orders_deployment)
