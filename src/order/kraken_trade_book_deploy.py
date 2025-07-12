@@ -62,7 +62,7 @@ if __name__ == "__main__":
         name="clear_orders",
         work_pool_name="kubernetes-default",
         parameters={
-            "keep_days": 30,
+            "keep_days": 90,
         },
         concurrency_limit=ConcurrencyLimitConfig(
             limit=1, collision_strategy=ConcurrencyLimitStrategy.CANCEL_NEW
