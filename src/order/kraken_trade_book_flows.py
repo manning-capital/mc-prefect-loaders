@@ -5,7 +5,7 @@ import requests
 from prefect import flow, get_run_logger, serve, task
 from prefect.artifacts import create_table_artifact
 from prefect.blocks.system import Secret
-from prefect.concurrency.sync import rate_limit
+from prefect.concurrency.asyncio import rate_limit
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
@@ -61,7 +61,7 @@ async def get_kraken_order_book(pair: str, count: int = 500) -> dict[str, object
 
     # Rate limit the task to avoid hitting Kraken's API too frequently.
     logger.info("Applying rate limit to Kraken API requests.")
-    rate_limit("kraken-api", strict=True, timeout_seconds=60)
+    await rate_limit("kraken-api", strict=True, timeout_seconds=60)
 
     # Fetch the trade book from Kraken's public API.
     logger.info(f"Fetching trade book for {pair} with count {count} from Kraken.")
