@@ -11,6 +11,7 @@ env:
   PREFECT_API_URL: https://prefect.manningcapital.co.uk/api
   PREFECT_GITHUB_CREDENTIALS: ${{ secrets.PREFECT_GITHUB_CREDENTIALS }}
   POSTGRESQL_PASSWORD: ${{ secrets.POSTGRESQL_PASSWORD }}
+  POSTGRESQL_HOST: ${{ secrets.POSTGRESQL_HOST }}
 
 jobs:
   push:
@@ -84,6 +85,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PREFECT_GITHUB_CREDENTIALS: ${{ secrets.PREFECT_GITHUB_CREDENTIALS }}
           POSTGRESQL_PASSWORD: ${{ secrets.POSTGRESQL_PASSWORD }}
+          POSTGRESQL_HOST: ${{ secrets.POSTGRESQL_HOST }}
 
       # Find all python files in the src folder that end in "*_deploy.py" and run in the uv environment.
       - name: Deploy Prefect flows

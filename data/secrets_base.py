@@ -9,3 +9,4 @@ if __name__ == "__main__":
     Secret(value=os.getenv("POSTGRESQL_PASSWORD")).save(
         "postgresql-password", overwrite=True
     )
+    Secret(value=os.getenv("POSTGRESQL_HOST")).save("postgresql-host", overwrite=True)

@@ -41,7 +41,7 @@ async def get_postgres_url() -> str:
     Get the PostgreSQL connection string from a secret block.
     """
     postgresql_password: str = (await Secret.load("postgresql-password")).get()
-    host = "db-postgresql-lon1-65351-do-user-18535103-0.m.db.ondigitalocean.com"
+    host = (await Secret.load("postgresql-host")).get()
     port = 25060
     database = "defaultdb"
     user = "doadmin"
