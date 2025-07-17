@@ -9,4 +9,4 @@ if __name__ == "__main__":
     Secret(value=os.getenv("POSTGRESQL_PASSWORD")).save(  # type: ignore
         "postgresql-password", overwrite=True
     )
-    Secret(value=os.getenv("POSTGRESQL_HOST")).save("postgresql-host", overwrite=True) # type: ignore
+    Secret(value=os.getenv("POSTGRESQL_HOST")).save("postgresql-host", overwrite=True)  # type: ignore

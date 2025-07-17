@@ -59,3 +59,8 @@ if __name__ == "__main__":
         limit=1,
         slot_decay_per_second=1,
     )
+    create_global_concurrency_limit(
+        name="coindesk-api",
+        limit=1,
+        slot_decay_per_second=1,
+    )

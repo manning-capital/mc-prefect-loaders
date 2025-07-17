@@ -13,7 +13,7 @@ dependencies = [
     "sqlalchemy>=2.0.41",
     "psycopg2-binary>=2.9.10",
     "requests>=2.32.3",
-    "mc-postgres-db>=1.0.7",
+    "mc-postgres-db==1.1.4",
 ]
 
 [dependency-groups]
