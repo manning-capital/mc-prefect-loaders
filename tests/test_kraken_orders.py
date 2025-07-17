@@ -7,24 +7,21 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from datetime import datetime, timezone, timedelta
 from unittest.mock import patch
 
-import pandas as pd
 import pytest
-from prefect.logging import disable_run_logger
 from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session
 from tests.mock_database import MockDatabase
-from mc_postgres_db.testing.utilities import postgres_test_harness, clear_database
-from mc_postgres_db.models import ProviderAssetOrder, ProviderType, Provider, ProviderAsset, Asset, AssetType
+from mc_postgres_db.testing.utilities import clear_database
+from mc_postgres_db.models import (
+    ProviderAssetOrder,
+    ProviderType,
+    Provider,
+    Asset,
+    AssetType,
+)
 from mc_postgres_db.prefect.asyncio.tasks import get_engine as get_engine_async
-from mc_postgres_db.prefect.tasks import get_engine
 from src.order.kraken_trade_book_flows import pull_kraken_orders
 
-
-@pytest.fixture(autouse=True, scope="session")
-def prefect_test_fixture():
-    with disable_run_logger():
-        with postgres_test_harness(prefect_server_startup_timeout=60):
-            yield
 
 @pytest.fixture(autouse=True, scope="function")
 def mock_data_source():
@@ -70,7 +67,9 @@ def create_sample_data(engine: Engine):
         session.commit()
 
         # Get the id for the provider type.
-        provider_type_id_stmt = select(ProviderType.id).where(ProviderType.name == "CryptoCurrencyExchange")
+        provider_type_id_stmt = select(ProviderType.id).where(
+            ProviderType.name == "CryptoCurrencyExchange"
+        )
         provider_type_id = session.execute(provider_type_id_stmt).scalar_one()
 
         # Add provider data.
@@ -96,7 +95,9 @@ def create_sample_data(engine: Engine):
         session.commit()
 
         # Get the id for the asset type.
-        asset_type_id_stmt = select(AssetType.id).where(AssetType.name == "CryptoCurrency")
+        asset_type_id_stmt = select(AssetType.id).where(
+            AssetType.name == "CryptoCurrency"
+        )
         asset_type_id = session.execute(asset_type_id_stmt).scalar_one()
 
         # Add the asset data.
@@ -140,11 +141,20 @@ def create_sample_data(engine: Engine):
         asset_id_4_stmt = select(Asset.id).where(Asset.name == "USDC")
         asset_id_4 = session.execute(asset_id_4_stmt).scalar_one()
 
-        return provider_type_id, asset_type_id, provider_id, asset_id_1, asset_id_2, asset_id_3, asset_id_4
+        return (
+            provider_type_id,
+            asset_type_id,
+            provider_id,
+            asset_id_1,
+            asset_id_2,
+            asset_id_3,
+            asset_id_4,
+        )
+
 
 @pytest.mark.asyncio
 async def test_pull_when_both_database_and_kraken_is_empty(
-    mock_data_source: MockDatabase
+    mock_data_source: MockDatabase,
 ):
     # Clear any existing data in the mock data source
     mock_data_source.clear_provider_asset_order_data()
@@ -160,9 +170,7 @@ async def test_pull_when_both_database_and_kraken_is_empty(
 
 
 @pytest.mark.asyncio
-async def test_pull_when_database_is_empty(
-    mock_data_source: MockDatabase
-):
+async def test_pull_when_database_is_empty(mock_data_source: MockDatabase):
     # Clear any existing data in the mock database
     mock_data_source.clear_provider_asset_order_data()
 
@@ -188,7 +196,7 @@ async def test_pull_when_database_is_empty(
 
 @pytest.mark.asyncio
 async def test_pull_when_database_has_an_existing_record(
-    mock_data_source: MockDatabase
+    mock_data_source: MockDatabase,
 ):
     # Clear any existing data in the mock database
     engine = await get_engine_async()
@@ -196,7 +204,15 @@ async def test_pull_when_database_has_an_existing_record(
     mock_data_source.clear_provider_asset_order_data()
 
     # Create the sample data.
-    provider_type_id, asset_type_id, provider_id, asset_id_1, asset_id_2, asset_id_3, asset_id_4 = create_sample_data(engine)
+    (
+        provider_type_id,
+        asset_type_id,
+        provider_id,
+        asset_id_1,
+        asset_id_2,
+        asset_id_3,
+        asset_id_4,
+    ) = create_sample_data(engine)
 
     # Add some mock data to the mock data source.
     use_time = datetime.now(timezone.utc) - timedelta(seconds=5)
@@ -233,16 +249,22 @@ async def test_pull_when_database_has_an_existing_record(
 
 
 @pytest.mark.asyncio
-async def test_pull_when_database_has_multiple_records(
-    mock_data_source: MockDatabase
-):
+async def test_pull_when_database_has_multiple_records(mock_data_source: MockDatabase):
     # Clear any existing data in the mock database
     engine = await get_engine_async()
     clear_database(engine)
     mock_data_source.clear_provider_asset_order_data()
 
     # Create the sample data.
-    provider_type_id, asset_type_id, provider_id, asset_id_1, asset_id_2, asset_id_3, asset_id_4 = create_sample_data(engine)
+    (
+        provider_type_id,
+        asset_type_id,
+        provider_id,
+        asset_id_1,
+        asset_id_2,
+        asset_id_3,
+        asset_id_4,
+    ) = create_sample_data(engine)
 
     # Add some mock data to the mock data source.
     use_time = datetime.now(timezone.utc) - timedelta(seconds=5)
@@ -274,16 +296,22 @@ async def test_pull_when_database_has_multiple_records(
 
 
 @pytest.mark.asyncio
-async def test_pull_with_multiple_from_and_to_asset_ids(
-    mock_data_source: MockDatabase
-):
+async def test_pull_with_multiple_from_and_to_asset_ids(mock_data_source: MockDatabase):
     # Clear any existing data in the mock database
     engine = await get_engine_async()
     clear_database(engine)
     mock_data_source.clear_provider_asset_order_data()
 
     # Create the sample data.
-    provider_type_id, asset_type_id, provider_id, asset_id_1, asset_id_2, asset_id_3, asset_id_4 = create_sample_data(engine)
+    (
+        provider_type_id,
+        asset_type_id,
+        provider_id,
+        asset_id_1,
+        asset_id_2,
+        asset_id_3,
+        asset_id_4,
+    ) = create_sample_data(engine)
 
     # Add some mock data to the mock data source.
     use_time = datetime.now(timezone.utc) - timedelta(seconds=5)
@@ -316,7 +344,7 @@ async def test_pull_with_multiple_from_and_to_asset_ids(
 
 @pytest.mark.asyncio
 async def test_pull_with_multiple_existing_duplicates_with_one_new_duplicate_and_non_duplicates(
-    mock_data_source: MockDatabase
+    mock_data_source: MockDatabase,
 ):
     # Clear any existing data in the mock database
     engine = await get_engine_async()
@@ -324,7 +352,15 @@ async def test_pull_with_multiple_existing_duplicates_with_one_new_duplicate_and
     mock_data_source.clear_provider_asset_order_data()
 
     # Create the sample data.
-    provider_type_id, asset_type_id, provider_id, asset_id_1, asset_id_2, asset_id_3, asset_id_4 = create_sample_data(engine)
+    (
+        provider_type_id,
+        asset_type_id,
+        provider_id,
+        asset_id_1,
+        asset_id_2,
+        asset_id_3,
+        asset_id_4,
+    ) = create_sample_data(engine)
 
     # Add some mock data to the mock data source.
     use_time = datetime.now(timezone.utc) - timedelta(seconds=5)
@@ -382,7 +418,7 @@ async def test_pull_with_multiple_existing_duplicates_with_one_new_duplicate_and
 
 @pytest.mark.asyncio
 async def test_pull_with_multiple_new_duplicates_and_non_duplicates(
-    mock_data_source: MockDatabase
+    mock_data_source: MockDatabase,
 ):
     # Clear any existing data in the mock database
     engine = await get_engine_async()
@@ -390,7 +426,15 @@ async def test_pull_with_multiple_new_duplicates_and_non_duplicates(
     mock_data_source.clear_provider_asset_order_data()
 
     # Create the sample data.
-    provider_type_id, asset_type_id, provider_id, asset_id_1, asset_id_2, asset_id_3, asset_id_4 = create_sample_data(engine)
+    (
+        provider_type_id,
+        asset_type_id,
+        provider_id,
+        asset_id_1,
+        asset_id_2,
+        asset_id_3,
+        asset_id_4,
+    ) = create_sample_data(engine)
 
     # Add some mock data to the mock data source.
     use_time = datetime.now(timezone.utc) - timedelta(seconds=5)

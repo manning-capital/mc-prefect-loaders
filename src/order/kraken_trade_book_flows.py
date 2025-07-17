@@ -224,7 +224,9 @@ async def get_provider_asset_order_data(
     """
     Fetch the current provider asset order data from PostgreSQL.
     """
-    from_asset_ids = [int(asset_id) for asset_id in from_asset_ids if asset_id is not None]
+    from_asset_ids = [
+        int(asset_id) for asset_id in from_asset_ids if asset_id is not None
+    ]
     to_asset_ids = [int(asset_id) for asset_id in to_asset_ids if asset_id is not None]
     engine = await get_engine()
     logger = get_run_logger()

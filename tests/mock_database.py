@@ -21,15 +21,17 @@ class MockDatabase:
         Reset the DataFrame to its initial state.
         """
         self.__df = pd.DataFrame(
-            columns=pd.Series([
-                "id",
-                "timestamp",
-                "provider_id",
-                "from_asset_id",
-                "to_asset_id",
-                "price",
-                "volume",
-            ])
+            columns=pd.Series(
+                [
+                    "id",
+                    "timestamp",
+                    "provider_id",
+                    "from_asset_id",
+                    "to_asset_id",
+                    "price",
+                    "volume",
+                ]
+            )
         )
         self.__df["id"] = pd.Series([], dtype=int)
         self.__df["timestamp"] = pd.Series([], dtype="datetime64[ns, UTC]")

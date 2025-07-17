@@ -3,11 +3,11 @@ import datetime as dt
 import pandas as pd
 from prefect import flow, get_run_logger, task
 from prefect.concurrency.asyncio import rate_limit
-from sqlalchemy import create_engine, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
-from mc_postgres_db.models import Provider, ProviderType, ProviderContent    
+from mc_postgres_db.models import Provider, ProviderType, ProviderContent
 from mc_postgres_db.prefect.asyncio.tasks import get_engine
-from src.shared.utils import get_postgres_url, compare_dataframes, set_data
+from src.shared.utils import compare_dataframes, set_data
 
 
 @task()
@@ -84,6 +84,7 @@ async def get_news_providers_from_database(
     provider_data = pd.read_sql(stmt, engine)
     return provider_data
 
+
 @task()
 async def save_coindesk_news_providers(
     news_provider_type_id: int,
@@ -91,7 +92,6 @@ async def save_coindesk_news_providers(
     old_provider_data: pd.DataFrame,
     new_raw_provider_data: pd.DataFrame,
 ) -> pd.DataFrame:
-
     # Format the raw provider data.
     new_provider_data: pd.DataFrame = new_raw_provider_data.copy(deep=True)  # type: ignore
     new_provider_data["provider_type_id"] = news_provider_type_id
@@ -161,6 +161,7 @@ async def get_coindesk_news_content_from_database(
 
     return content_data
 
+
 @task()
 async def save_coindesk_news_content(
     content_type_id: int,
@@ -169,14 +170,17 @@ async def save_coindesk_news_content(
     current_content_data: pd.DataFrame,
     raw_content_data: pd.DataFrame,
 ) -> pd.DataFrame:
-
     # Format the raw content data.
     new_content_data: pd.DataFrame = raw_content_data.copy(deep=True)  # type: ignore
-    new_content_data["provider_external_code"] = new_content_data["SOURCE_ID"].astype(str)
+    new_content_data["provider_external_code"] = new_content_data["SOURCE_ID"].astype(
+        str
+    )
     new_content_data["content_external_code"] = new_content_data["ID"].astype(str)
     new_content_data["content_type_id"] = content_type_id
-    new_content_data["is_active"] = new_content_data["STATUS"].map(lambda x: True if x == "ACTIVE" else False)
-    
+    new_content_data["is_active"] = new_content_data["STATUS"].map(
+        lambda x: True if x == "ACTIVE" else False
+    )
+
 
 @flow()
 async def pull_coindesk_news_content():
@@ -199,7 +203,10 @@ async def pull_coindesk_news_content():
 
     # Save provider data to database.
     updated_provider_data = await save_coindesk_news_providers(
-        news_provider_type_id, coindesk_provider_id, current_provider_data, raw_provider_data
+        news_provider_type_id,
+        coindesk_provider_id,
+        current_provider_data,
+        raw_provider_data,
     )
 
     # Get content data
@@ -207,7 +214,9 @@ async def pull_coindesk_news_content():
     logger.info(f"Fetched {len(raw_content_data)} content items from Coindesk API.")
 
     # Get the existing content data from the database.
-    current_content_data = await get_coindesk_news_content_from_database(raw_content_data)
+    current_content_data = await get_coindesk_news_content_from_database(
+        raw_content_data
+    )
 
     # Save content data to database
     provider_content_data = await save_coindesk_news_content(
