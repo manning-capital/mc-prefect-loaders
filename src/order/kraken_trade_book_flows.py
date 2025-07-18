@@ -149,7 +149,7 @@ async def get_kraken_provider_asset_order_data(
         )
         pair_df["pair"] = pair
         pair_df["timestamp"] = pd.to_datetime(pair_df["timestamp"], unit="s")
-        pair_df["timestamp"] = pair_df["timestamp"].dt.tz_convert(timezone.utc)
+        pair_df["timestamp"] = pair_df["timestamp"].dt.tz_localize(timezone.utc)
         pair_df["price"] = pd.to_numeric(pair_df["price"], errors="coerce")
         pair_df["volume"] = pd.to_numeric(pair_df["volume"], errors="coerce")
         asks_trade_book_df = pd.concat([asks_trade_book_df, pair_df], ignore_index=True)
@@ -170,7 +170,7 @@ async def get_kraken_provider_asset_order_data(
         )
         pair_df["pair"] = pair
         pair_df["timestamp"] = pd.to_datetime(pair_df["timestamp"], unit="s")
-        pair_df["timestamp"] = pair_df["timestamp"].dt.tz_convert(timezone.utc)
+        pair_df["timestamp"] = pair_df["timestamp"].dt.tz_localize(timezone.utc)
         pair_df["price"] = pd.to_numeric(pair_df["price"], errors="coerce")
         pair_df["volume"] = pd.to_numeric(pair_df["volume"], errors="coerce")
         bids_trade_book_df = pd.concat([bids_trade_book_df, pair_df], ignore_index=True)
@@ -195,7 +195,7 @@ async def get_kraken_provider_asset_order_data(
     if not trade_book_df.empty:
         trade_book_df = trade_book_df[
             trade_book_df["timestamp"]
-            >= (datetime.now() - pd.Timedelta(seconds=lookback_seconds))
+            >= (datetime.now(timezone.utc) - pd.Timedelta(seconds=lookback_seconds))
         ]
         logger.info(
             f"Filtered new provider asset orders to {len(trade_book_df)} records from the last day."
@@ -242,8 +242,8 @@ async def get_provider_asset_order_data(
     df = pd.read_sql(stmt, engine)
 
     # Convert the timestamp to UTC.
-    df["timestamp"] = pd.to_datetime(df["timestamp"], unit="s", utc=True)
-    df["timestamp"] = df["timestamp"].dt.tz_convert(timezone.utc)
+    df["timestamp"] = pd.to_datetime(df["timestamp"], unit="s")
+    df["timestamp"] = df["timestamp"].dt.tz_localize(timezone.utc)
 
     if df.empty:
         logger.warning("No provider asset data found for the given IDs.")
@@ -294,6 +294,18 @@ async def save_order_data(
     )  # type: ignore
 
 
+@task()
+async def get_kraken_provider_id() -> int:
+    """
+    Get the Kraken provider ID.
+    """
+    engine = await get_engine()
+    with Session(engine) as session:
+        stmt = select(Provider.id).where(Provider.name == "Kraken")
+        kraken_provider_id = session.execute(stmt).scalar_one()
+    return kraken_provider_id
+
+
 @flow(log_prints=True)
 async def pull_kraken_orders(
     from_asset_ids: list[int],
@@ -302,7 +314,7 @@ async def pull_kraken_orders(
     logger = get_run_logger()
 
     # Use a fixed provider ID for Kraken.
-    kraken_provider_id = 1
+    kraken_provider_id = await get_kraken_provider_id()
 
     # Validate the input pairs.
     if not from_asset_ids or not to_asset_ids:
@@ -374,7 +386,7 @@ async def clear_orders(
     logger = get_run_logger()
 
     # Get the cutoff date for old orders.
-    cutoff_date = (datetime.now() - timedelta(days=keep_days)).date()
+    cutoff_date = (datetime.now(timezone.utc) - timedelta(days=keep_days)).date()
 
     # Delete old orders from the database.
     await delete_old_orders(cutoff_date)  # type: ignore

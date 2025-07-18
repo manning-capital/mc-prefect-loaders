@@ -1,8 +1,7 @@
-import os
 from prefect import task
-from prefect.blocks.system import Secret
 import pandas as pd
 from typing import List, Tuple
+from prefect.settings import PREFECT_API_URL
 
 
 @task()
@@ -10,7 +9,7 @@ async def get_api_url() -> str:
     """
     Get the base URL for the Kraken API.
     """
-    return os.environ["PREFECT_API_URL"]
+    return PREFECT_API_URL.value()
 
 
 @task()
@@ -24,26 +23,6 @@ async def get_base_url() -> str:
     if api_url.endswith("/api"):
         api_url = api_url[:-4]  # Remove the "/api" suffix
     return api_url
-
-
-@task()
-async def get_postgres_url() -> str:
-    """
-    Get the PostgreSQL connection string from a secret block.
-    """
-    postgresql_password: str = (await Secret.load("postgresql-password")).get()  # type: ignore
-    host = (await Secret.load("postgresql-host")).get()  # type: ignore
-    port = 25060
-    database = "defaultdb"
-    user = "doadmin"
-    url = "postgresql+psycopg2://{user}:{password}@{host}:{port}/{database}".format(
-        user=user,
-        password=postgresql_password,
-        host=host,
-        port=port,
-        database=database,
-    )
-    return url
 
 
 def compare_dataframes(
