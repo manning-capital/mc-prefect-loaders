@@ -3,7 +3,7 @@ import sys
 import datetime as dt
 import time
 
-sys.path.append(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir))
+sys.path.append(os.path.join(os.path.dirname(__file__), os.pardir))
 
 import pytest
 import pandas as pd
