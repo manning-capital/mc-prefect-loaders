@@ -9,6 +9,16 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+      - name: Ruff lint
+        run: uv run ruff check .
+      - name: Ruff format
+        run: uv run ruff format --diff .
+
   build:
     runs-on: ubuntu-latest
     permissions:
@@ -63,3 +73,13 @@ jobs:
           subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME}}
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: false
+
+      # --- Build test image (with test deps) ---
+      - name: Build test Docker image
+        id: build-test
+        run: docker build -f Dockerfile.test -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME}}:test .
+
+      # --- Run tests in Docker container (Test) ---
+      - name: Run tests in Docker container
+        id: run-test
+        run: docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME}}:test

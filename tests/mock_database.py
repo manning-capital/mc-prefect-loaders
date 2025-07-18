@@ -21,15 +21,17 @@ class MockDatabase:
         Reset the DataFrame to its initial state.
         """
         self.__df = pd.DataFrame(
-            columns=[
-                "id",
-                "timestamp",
-                "provider_id",
-                "from_asset_id",
-                "to_asset_id",
-                "price",
-                "volume",
-            ]
+            columns=pd.Series(
+                [
+                    "id",
+                    "timestamp",
+                    "provider_id",
+                    "from_asset_id",
+                    "to_asset_id",
+                    "price",
+                    "volume",
+                ]
+            )
         )
         self.__df["id"] = pd.Series([], dtype=int)
         self.__df["timestamp"] = pd.Series([], dtype="datetime64[ns, UTC]")
@@ -86,23 +88,23 @@ class MockDatabase:
 
         # Filter by provider IDs
         if provider_ids:
-            output = output[output["provider_id"].isin(provider_ids)]
+            output = output.loc[output["provider_id"].isin(provider_ids)]
 
         # Filter by from asset IDs
         if from_asset_ids:
-            output = output[output["from_asset_id"].isin(from_asset_ids)]
+            output = output.loc[output["from_asset_id"].isin(from_asset_ids)]
 
         # Filter by to asset IDs
         if to_asset_ids:
-            output = output[output["to_asset_id"].isin(to_asset_ids)]
+            output = output.loc[output["to_asset_id"].isin(to_asset_ids)]
 
         # Filter by start datetime
         if start_datetime:
-            output = output[output["timestamp"] >= start_datetime]
+            output = output.loc[output["timestamp"] >= start_datetime]
 
         # Filter by end datetime
         if end_datetime:
-            output = output[output["timestamp"] <= end_datetime]
+            output = output.loc[output["timestamp"] <= end_datetime]
 
         return output.reset_index(drop=True).drop(columns=["id"])
 

@@ -1,58 +1,24 @@
 import os
-from datetime import datetime, timedelta
+import sys
+
+sys.path.append(
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, os.pardir)
+)
+
+from datetime import datetime, timedelta, timezone
 import pandas as pd
 import requests
 from prefect import flow, get_run_logger, serve, task
 from prefect.artifacts import create_table_artifact
-from prefect.blocks.system import Secret
 from prefect.concurrency.asyncio import rate_limit
-from sqlalchemy import create_engine, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from mcpdb.tables import Provider, ProviderAssetOrder
+from mc_postgres_db.models import Provider, ProviderAssetOrder
+from mc_postgres_db.prefect.asyncio.tasks import get_engine, set_data
+from src.shared.utils import get_base_url
 
 INTERVAL_SECONDS = 30
-
-
-@task()
-async def get_api_url() -> str:
-    """
-    Get the base URL for the Kraken API.
-    """
-    return os.environ["PREFECT_API_URL"]
-
-
-@task()
-async def get_base_url() -> str:
-    """
-    Get the base URL for the Kraken API.
-    """
-    api_url: str = await get_api_url()
-    if not api_url:
-        raise ValueError("PREFECT_API_URL environment variable is not set.")
-    if api_url.endswith("/api"):
-        api_url = api_url[:-4]  # Remove the "/api" suffix
-    return api_url
-
-
-@task()
-async def get_postgres_url() -> str:
-    """
-    Get the PostgreSQL connection string from a secret block.
-    """
-    postgresql_password: str = (await Secret.load("postgresql-password")).get()
-    host = (await Secret.load("postgresql-host")).get()
-    port = 25060
-    database = "defaultdb"
-    user = "doadmin"
-    url = "postgresql+psycopg2://{user}:{password}@{host}:{port}/{database}".format(
-        user=user,
-        password=postgresql_password,
-        host=host,
-        port=port,
-        database=database,
-    )
-    return url
 
 
 @task(log_prints=True)
@@ -73,7 +39,7 @@ async def get_kraken_order_book(pair: str, count: int = 500) -> dict[str, object
     data: dict = response.json()
 
     # Extract the trade book data.
-    trade_book: dict[str, object] = data.get("result")
+    trade_book = data.get("result")
     if not trade_book:
         raise Exception("No trade book data found in the response.")
     return trade_book
@@ -93,8 +59,7 @@ async def get_kraken_provider_asset_order_data(
 
     # Get all dependent tasks data.
     logger = get_run_logger()
-    url = await get_postgres_url()
-    engine = create_engine(url)
+    engine = await get_engine()
     base_url = await get_base_url()
 
     # Fetch the asset pairs from the database.
@@ -102,7 +67,9 @@ async def get_kraken_provider_asset_order_data(
         stmt = select(Provider).where(
             Provider.id == kraken_provider_id,
         )
-        provider: Provider = session.execute(stmt).scalar_one_or_none()
+        provider = session.execute(stmt).scalar_one_or_none()
+        if provider is None:
+            raise Exception(f"Provider with id {kraken_provider_id} not found.")
         assets = provider.get_all_assets(
             engine=engine, asset_ids=from_asset_ids + to_asset_ids
         )
@@ -111,14 +78,16 @@ async def get_kraken_provider_asset_order_data(
     if assets is None or len(assets) == 0:
         logger.warning("No provider asset data found for Kraken.")
         return pd.DataFrame(
-            columns=[
-                "timestamp",
-                "provider_id",
-                "asset_id",
-                "order_type",
-                "price",
-                "volume",
-            ]
+            columns=pd.Index(
+                [
+                    "timestamp",
+                    "provider_id",
+                    "asset_id",
+                    "order_type",
+                    "price",
+                    "volume",
+                ]
+            )
         )
 
     # Create a DataFrame for the provider asset data.
@@ -137,9 +106,9 @@ async def get_kraken_provider_asset_order_data(
     if not duplicates.empty:
         artifact_id = await create_table_artifact(
             key="provider-asset-code-duplicates",
-            table=duplicates.to_dict(orient="records"),
+            table=duplicates.to_dict(orient="records"),  # type: ignore
             description="Duplicate asset codes in provider asset data",
-        )
+        )  # type: ignore
         logger.warning(
             f"Found duplicates in provider asset data. Artifact created: {base_url}/artifacts/artifact/{artifact_id}"
         )
@@ -147,7 +116,8 @@ async def get_kraken_provider_asset_order_data(
             subset=["asset_id"]
         )
     provider_asset_id_to_code_map = {
-        row.asset_id: row.asset_code for row in provider_asset_code_df.itertuples()
+        row.asset_id: row.asset_code  # type: ignore
+        for row in provider_asset_code_df.itertuples()
     }
 
     # Create a DataFrame for the asset pairs.
@@ -158,8 +128,8 @@ async def get_kraken_provider_asset_order_data(
         }
     )
     pairs_df["pair"] = (
-        pairs_df["from_asset_id"].map(provider_asset_id_to_code_map).str.upper()
-        + pairs_df["to_asset_id"].map(provider_asset_id_to_code_map).str.upper()
+        pairs_df["from_asset_id"].map(provider_asset_id_to_code_map).str.upper()  # type: ignore
+        + pairs_df["to_asset_id"].map(provider_asset_id_to_code_map).str.upper()  # type: ignore
     )
 
     # Create a list of pairs to fetch.
@@ -174,9 +144,12 @@ async def get_kraken_provider_asset_order_data(
     # Convert the trade book data to a DataFrame.
     asks_trade_book_df = pd.DataFrame()
     for pair, book in trade_books.items():
-        pair_df = pd.DataFrame(book["asks"], columns=["price", "volume", "timestamp"])
+        pair_df = pd.DataFrame(
+            book["asks"], columns=pd.Index(["price", "volume", "timestamp"])
+        )
         pair_df["pair"] = pair
         pair_df["timestamp"] = pd.to_datetime(pair_df["timestamp"], unit="s")
+        pair_df["timestamp"] = pair_df["timestamp"].dt.tz_convert(timezone.utc)
         pair_df["price"] = pd.to_numeric(pair_df["price"], errors="coerce")
         pair_df["volume"] = pd.to_numeric(pair_df["volume"], errors="coerce")
         asks_trade_book_df = pd.concat([asks_trade_book_df, pair_df], ignore_index=True)
@@ -192,9 +165,12 @@ async def get_kraken_provider_asset_order_data(
     # Convert bids trade book to a DataFrame.
     bids_trade_book_df = pd.DataFrame()
     for pair, book in trade_books.items():
-        pair_df = pd.DataFrame(book["bids"], columns=["price", "volume", "timestamp"])
+        pair_df = pd.DataFrame(
+            book["bids"], columns=pd.Index(["price", "volume", "timestamp"])
+        )
         pair_df["pair"] = pair
         pair_df["timestamp"] = pd.to_datetime(pair_df["timestamp"], unit="s")
+        pair_df["timestamp"] = pair_df["timestamp"].dt.tz_convert(timezone.utc)
         pair_df["price"] = pd.to_numeric(pair_df["price"], errors="coerce")
         pair_df["volume"] = pd.to_numeric(pair_df["volume"], errors="coerce")
         bids_trade_book_df = pd.concat([bids_trade_book_df, pair_df], ignore_index=True)
@@ -225,9 +201,16 @@ async def get_kraken_provider_asset_order_data(
             f"Filtered new provider asset orders to {len(trade_book_df)} records from the last day."
         )
 
-    return trade_book_df[
-        ["timestamp", "provider_id", "from_asset_id", "to_asset_id", "price", "volume"]
+    # Ensure the result is always a DataFrame, not a Series
+    columns = [
+        "timestamp",
+        "provider_id",
+        "from_asset_id",
+        "to_asset_id",
+        "price",
+        "volume",
     ]
+    return trade_book_df.loc[:, columns].copy()
 
 
 @task()
@@ -235,55 +218,38 @@ async def get_provider_asset_order_data(
     provider_id: int,
     from_asset_ids: list[int],
     to_asset_ids: list[int],
-    start_datetime: datetime = None,
-    end_datetime: datetime = None,
+    start_datetime: datetime | None = None,
+    end_datetime: datetime | None = None,
 ) -> pd.DataFrame:
     """
     Fetch the current provider asset order data from PostgreSQL.
     """
-    url = await get_postgres_url()
-    engine = create_engine(url)
+    from_asset_ids = [
+        int(asset_id) for asset_id in from_asset_ids if asset_id is not None
+    ]
+    to_asset_ids = [int(asset_id) for asset_id in to_asset_ids if asset_id is not None]
+    engine = await get_engine()
     logger = get_run_logger()
+    stmt = select(ProviderAssetOrder).where(
+        ProviderAssetOrder.provider_id == provider_id,
+        ProviderAssetOrder.from_asset_id.in_(from_asset_ids),
+        ProviderAssetOrder.to_asset_id.in_(to_asset_ids),
+    )
+    if start_datetime is not None and not pd.isna(start_datetime):
+        stmt = stmt.where(ProviderAssetOrder.timestamp >= start_datetime)
+    if end_datetime is not None and not pd.isna(end_datetime):
+        stmt = stmt.where(ProviderAssetOrder.timestamp <= end_datetime)
+    df = pd.read_sql(stmt, engine)
 
-    with Session(engine) as session:
-        stmt = select(ProviderAssetOrder).where(
-            ProviderAssetOrder.provider_id == provider_id,
-            ProviderAssetOrder.from_asset_id.in_(from_asset_ids),
-            ProviderAssetOrder.to_asset_id.in_(to_asset_ids),
-        )
-        if start_datetime:
-            stmt = stmt.where(ProviderAssetOrder.timestamp >= start_datetime)
-        if end_datetime:
-            stmt = stmt.where(ProviderAssetOrder.timestamp <= end_datetime)
-        df = pd.read_sql(stmt, session.bind)
+    # Convert the timestamp to UTC.
+    df["timestamp"] = pd.to_datetime(df["timestamp"], unit="s", utc=True)
+    df["timestamp"] = df["timestamp"].dt.tz_convert(timezone.utc)
 
-        if df.empty:
-            logger.warning("No provider asset data found for the given IDs.")
-            return pd.DataFrame()
+    if df.empty:
+        logger.warning("No provider asset data found for the given IDs.")
+        return pd.DataFrame()
 
-        return df.drop(columns=["id"])
-
-
-@task()
-async def save_provider_asset_order_data(
-    to_set: pd.DataFrame,
-):
-    """
-    Save the provider asset order data to PostgreSQL.
-    """
-    # Get the PostgreSQL connection string.
-    url = await get_postgres_url()
-    engine = create_engine(url)
-    logger = get_run_logger()
-    with engine.connect() as conn:
-        logger.info("Starting to save order data...")
-        to_set.to_sql(
-            "provider_asset_order",
-            conn,
-            if_exists="append",
-            index=False,
-        )
-        logger.info(f"Saved {len(to_set)} new order records...")
+    return df.drop(columns=["id"])
 
 
 @task()
@@ -321,7 +287,11 @@ async def save_order_data(
         provider_asset_order_data = new_provider_asset_order_data
 
     # Save the data to PostgreSQL.
-    await save_provider_asset_order_data(provider_asset_order_data)
+    await set_data(
+        "provider_asset_order",
+        provider_asset_order_data,
+        operation_type="append",
+    )  # type: ignore
 
 
 @flow(log_prints=True)
@@ -362,7 +332,7 @@ async def pull_kraken_orders(
         from_asset_ids,
         to_asset_ids,
         start_datetime=new_provider_asset_order_data["timestamp"].min(),
-    )
+    )  # type: ignore
     logger.info(
         f"Fetched {len(current_provider_asset_data)} current provider asset orders."
     )
@@ -377,8 +347,7 @@ async def delete_old_orders(cutoff_date: datetime):
     """
     Delete old orders from the database that are older than the cutoff date.
     """
-    url = await get_postgres_url()
-    engine = create_engine(url)
+    engine = await get_engine()
     logger = get_run_logger()
 
     with Session(engine) as session:
@@ -408,7 +377,7 @@ async def clear_orders(
     cutoff_date = (datetime.now() - timedelta(days=keep_days)).date()
 
     # Delete old orders from the database.
-    await delete_old_orders(cutoff_date)
+    await delete_old_orders(cutoff_date)  # type: ignore
 
     logger.info(f"Cleared orders older than {keep_days} days.")
 
@@ -429,4 +398,4 @@ if __name__ == "__main__":
             "keep_days": 30,
         },
     )
-    serve(pull_kraken_orders_deployment, clear_orders_deployment)
+    serve(pull_kraken_orders_deployment, clear_orders_deployment)  # type: ignore
