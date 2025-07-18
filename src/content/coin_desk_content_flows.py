@@ -163,16 +163,23 @@ async def save_coindesk_news_providers(
     ].astype("Int64")
 
     # Compare the provider data to the current provider data.
-    dropped, added, _, different_records = compare_dataframes(
+    _, added, _, different_records = compare_dataframes(
         old_provider_data, new_provider_data, ["provider_external_code"]
     )
 
-    # Combine the dropped, added, and different records.
-    combined_data = pd.concat([dropped, added, different_records])
-    combined_data = combined_data.reset_index(drop=True)
+    # Add the new providers to the database.
+    await set_data(
+        Provider.__tablename__,
+        added.drop(columns=["id"]),
+        operation_type="upsert",
+    )
 
-    # Upsert the combined data to the database.
-    await set_data(Provider.__tablename__, combined_data, operation_type="upsert")
+    # Update the existing providers in the database.
+    await set_data(
+        Provider.__tablename__,
+        different_records,
+        operation_type="upsert",
+    )
 
     # Fetch the updated provider data from the database.
     updated_provider_data = await get_news_providers_from_database(
@@ -288,17 +295,18 @@ async def save_coindesk_news_content(
     new_content_data["authors"] = new_content_data["authors"].astype("str")
 
     # Compare the content data to the current content data.
-    dropped, added, _, different_records = compare_dataframes(
+    _, added, _, different_records = compare_dataframes(
         current_content_data, new_content_data, ["content_external_code"]
     )
 
-    # Combine the dropped, added, and different records.
-    combined_data = pd.concat([dropped, added, different_records])
-    combined_data = combined_data.reset_index(drop=True)
-
-    # Upsert the combined data to the database.
+    # Add the new content to the database.
     await set_data(
-        ProviderContent.__tablename__, combined_data, operation_type="upsert"
+        ProviderContent.__tablename__, added.drop(columns=["id"]), operation_type="upsert"
+    )
+
+    # Update the existing content in the database.
+    await set_data(
+        ProviderContent.__tablename__, different_records, operation_type="upsert"
     )
 
     # Fetch the updated content data from the database.
