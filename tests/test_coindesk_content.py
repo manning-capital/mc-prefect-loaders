@@ -410,3 +410,210 @@ async def test_empty_content_in_database_and_new_content():
             "48429722",
             "48429207",
         }
+
+@pytest.mark.asyncio
+async def test_multiple_existing_content_with_updates():
+    # Clear the database.
+    engine = await get_engine()
+    clear_database(engine)
+
+    # Setup the base data.
+    provider_type_id, content_type_id, provider_id = setup_base_data(engine)
+    
+    # Setup the mock news providers function.
+    @task()
+    async def mock_get_coindesk_news_providers():
+        with open("tests/data/coindesk/all_sources.json", "r") as f:
+            df = pd.read_json(f)
+            df = df.loc[df["ID"].isin([82])]
+            return df
+    
+    # Setup the mock news content function.
+    @task()
+    async def mock_get_coindesk_news_content():
+        with open("tests/data/coindesk/all_articles.json", "r") as f:
+            df = pd.read_json(f)
+            df = df.loc[df["ID"].isin([48431841, 48429722, 48429207])]
+            return df
+
+    with (
+        patch(
+            "src.content.coin_desk_content_flows.get_coindesk_news_content",
+            mock_get_coindesk_news_content,
+        ),
+        patch(
+            "src.content.coin_desk_content_flows.get_coindesk_news_providers",
+            mock_get_coindesk_news_providers,
+        ),
+    ):
+        with Session(engine) as session:
+            # Create the provider first.
+            session.add(
+                Provider(
+                    name="Bitcoin World",
+                    is_active=True,
+                    provider_type_id=provider_type_id,
+                    provider_external_code="82",
+                    url="https://bitcoinworld.co.in/feed/",
+                    image_url="https://resources.cryptocompare.com/news/82/default.png",
+                    underlying_provider_id=provider_id,
+                )
+            )
+            session.commit()
+            bitcoin_world_provider_id = session.execute(
+                select(Provider.id).where(Provider.provider_external_code == "82")
+            ).scalar_one()
+
+            # Next create the content items.
+            wrong_author = "This is an out of date author"
+            wrong_title = "This is an out of date title"
+            wrong_content = "This is an out of date content"
+            session.add(
+                ProviderContent(
+                    provider_id=bitcoin_world_provider_id,
+                    content_external_code="48431841",
+                    content_type_id=content_type_id,
+                    timestamp=dt.datetime.now(dt.timezone.utc).replace(tzinfo=None),
+                    authors=wrong_author,
+                    title=wrong_title,
+                    content=wrong_content,
+                )
+            )
+            session.add(
+                ProviderContent(
+                    provider_id=bitcoin_world_provider_id,
+                    content_external_code="48429722",
+                    content_type_id=content_type_id,
+                    timestamp=dt.datetime.now(dt.timezone.utc).replace(tzinfo=None),
+                    authors=wrong_author,
+                    title=wrong_title,
+                    content=wrong_content,
+                )
+            )
+            session.add(
+                ProviderContent(
+                    provider_id=bitcoin_world_provider_id,
+                    content_external_code="48429207",
+                    content_type_id=content_type_id,
+                    timestamp=dt.datetime.now(dt.timezone.utc).replace(tzinfo=None),
+                    authors=wrong_author,
+                    title=wrong_title,
+                    content=wrong_content,
+                )
+            )
+            session.commit()
+
+        # Run the content flow.
+        await pull_coindesk_news_content()
+
+        # Check the content data.
+        content_stmt = select(ProviderContent).where(
+            ProviderContent.provider_id == bitcoin_world_provider_id
+        )
+        content_df = pd.read_sql(content_stmt, engine)
+        assert len(content_df) == 3
+        assert set(content_df["content_external_code"]) == {
+            "48431841",
+            "48429722",
+            "48429207",
+        }
+        assert len(content_df.loc[content_df["authors"] == wrong_author]) == 0
+        assert len(content_df.loc[content_df["title"] == wrong_title]) == 0
+        assert len(content_df.loc[content_df["content"] == wrong_content]) == 0
+
+
+
+@pytest.mark.asyncio
+async def test_multiple_existing_content_with_updates_and_new_content():
+    # Clear the database.
+    engine = await get_engine()
+    clear_database(engine)
+
+    # Setup the base data.
+    provider_type_id, content_type_id, provider_id = setup_base_data(engine)
+
+    # Setup the mock news providers function.
+    @task()
+    async def mock_get_coindesk_news_providers():
+        with open("tests/data/coindesk/all_sources.json", "r") as f:
+            df = pd.read_json(f)
+            df = df.loc[df["ID"].isin([82])]
+            return df
+
+    # Setup the mock news content function.
+    @task()
+    async def mock_get_coindesk_news_content():
+        with open("tests/data/coindesk/all_articles.json", "r") as f:
+            df = pd.read_json(f)
+            df = df.loc[df["ID"].isin([48431841, 48429722, 48429207])]
+            return df
+    
+    with (
+        patch(
+            "src.content.coin_desk_content_flows.get_coindesk_news_content",
+            mock_get_coindesk_news_content,
+        ),
+        patch(
+            "src.content.coin_desk_content_flows.get_coindesk_news_providers",
+            mock_get_coindesk_news_providers,
+        ),
+    ):
+        with Session(engine) as session:
+            # Create the provider first.
+            session.add(
+                Provider(
+                    name="Bitcoin World",
+                    is_active=True,
+                    provider_type_id=provider_type_id,
+                    provider_external_code="82",
+                    url="https://bitcoinworld.co.in/feed/",
+                    image_url="https://resources.cryptocompare.com/news/82/default.png",
+                    underlying_provider_id=provider_id,
+                )
+            )
+            session.commit()
+            bitcoin_world_provider_id = session.execute(
+                select(Provider.id).where(Provider.provider_external_code == "82")
+            ).scalar_one()
+            
+            # Next create the content items.
+            wrong_author = "This is an out of date author"
+            wrong_title = "This is an out of date title"
+            wrong_content = "This is an out of date content"
+            session.add(
+                ProviderContent(
+                    provider_id=bitcoin_world_provider_id,
+                    content_external_code="48429722",
+                    content_type_id=content_type_id,
+                    timestamp=dt.datetime.now(dt.timezone.utc).replace(tzinfo=None),
+                    authors=wrong_author,
+                    title=wrong_title,
+                    content=wrong_content,
+                )
+            )
+            session.commit()
+
+            # Record the timestamp before the content flow.
+            timestamp = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
+            time.sleep(1.0)
+
+            # Run the content flow.
+            await pull_coindesk_news_content()
+
+            # Check the content data.
+            content_stmt = select(ProviderContent).where(
+                ProviderContent.provider_id == bitcoin_world_provider_id
+            )
+            content_df = pd.read_sql(content_stmt, engine)
+            existing_content = content_df.loc[content_df["created_at"] <= timestamp]
+            assert len(existing_content) == 1
+            assert set(existing_content["content_external_code"]) == {"48429722"}
+            assert len(existing_content.loc[existing_content["authors"] == wrong_author]) == 0
+            assert len(existing_content.loc[existing_content["title"] == wrong_title]) == 0
+            assert len(existing_content.loc[existing_content["content"] == wrong_content]) == 0
+            new_content = content_df.loc[content_df["created_at"] > timestamp]
+            assert len(new_content) == 2
+            assert set(new_content["content_external_code"]) == {
+                "48431841",
+                "48429207",
+            }
