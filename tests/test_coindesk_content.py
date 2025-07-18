@@ -411,6 +411,7 @@ async def test_empty_content_in_database_and_new_content():
             "48429207",
         }
 
+
 @pytest.mark.asyncio
 async def test_multiple_existing_content_with_updates():
     # Clear the database.
@@ -419,7 +420,7 @@ async def test_multiple_existing_content_with_updates():
 
     # Setup the base data.
     provider_type_id, content_type_id, provider_id = setup_base_data(engine)
-    
+
     # Setup the mock news providers function.
     @task()
     async def mock_get_coindesk_news_providers():
@@ -427,7 +428,7 @@ async def test_multiple_existing_content_with_updates():
             df = pd.read_json(f)
             df = df.loc[df["ID"].isin([82])]
             return df
-    
+
     # Setup the mock news content function.
     @task()
     async def mock_get_coindesk_news_content():
@@ -522,7 +523,6 @@ async def test_multiple_existing_content_with_updates():
         assert len(content_df.loc[content_df["content"] == wrong_content]) == 0
 
 
-
 @pytest.mark.asyncio
 async def test_multiple_existing_content_with_updates_and_new_content():
     # Clear the database.
@@ -547,7 +547,7 @@ async def test_multiple_existing_content_with_updates_and_new_content():
             df = pd.read_json(f)
             df = df.loc[df["ID"].isin([48431841, 48429722, 48429207])]
             return df
-    
+
     with (
         patch(
             "src.content.coin_desk_content_flows.get_coindesk_news_content",
@@ -575,7 +575,7 @@ async def test_multiple_existing_content_with_updates_and_new_content():
             bitcoin_world_provider_id = session.execute(
                 select(Provider.id).where(Provider.provider_external_code == "82")
             ).scalar_one()
-            
+
             # Next create the content items.
             wrong_author = "This is an out of date author"
             wrong_title = "This is an out of date title"
@@ -608,9 +608,17 @@ async def test_multiple_existing_content_with_updates_and_new_content():
             existing_content = content_df.loc[content_df["created_at"] <= timestamp]
             assert len(existing_content) == 1
             assert set(existing_content["content_external_code"]) == {"48429722"}
-            assert len(existing_content.loc[existing_content["authors"] == wrong_author]) == 0
-            assert len(existing_content.loc[existing_content["title"] == wrong_title]) == 0
-            assert len(existing_content.loc[existing_content["content"] == wrong_content]) == 0
+            assert (
+                len(existing_content.loc[existing_content["authors"] == wrong_author])
+                == 0
+            )
+            assert (
+                len(existing_content.loc[existing_content["title"] == wrong_title]) == 0
+            )
+            assert (
+                len(existing_content.loc[existing_content["content"] == wrong_content])
+                == 0
+            )
             new_content = content_df.loc[content_df["created_at"] > timestamp]
             assert len(new_content) == 2
             assert set(new_content["content_external_code"]) == {
