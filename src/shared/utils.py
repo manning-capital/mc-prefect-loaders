@@ -24,6 +24,7 @@ async def get_base_url() -> str:
         api_url = api_url[:-4]  # Remove the "/api" suffix
     return api_url
 
+
 def compare_dataframes(
     table_1: pd.DataFrame,
     table_2: pd.DataFrame,

@@ -305,6 +305,7 @@ async def get_kraken_provider_id() -> int:
         kraken_provider_id = session.execute(stmt).scalar_one()
     return kraken_provider_id
 
+
 @flow(log_prints=True)
 async def pull_kraken_orders(
     from_asset_ids: list[int],

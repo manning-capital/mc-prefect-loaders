@@ -1,7 +1,5 @@
 import os
 import sys
-import json
-import random
 
 # Ensure the parent directory is in the Python path.
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -12,7 +10,6 @@ from unittest.mock import patch
 import pytest
 import pandas as pd
 from prefect import task
-from typing import Any
 from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session
 from mc_postgres_db.testing.utilities import clear_database
@@ -25,38 +22,35 @@ from mc_postgres_db.models import (
     ProviderAsset,
 )
 from mc_postgres_db.prefect.asyncio.tasks import get_engine as get_engine_async
-from src.order.kraken_trade_book_flows import pull_kraken_orders, INTERVAL_SECONDS
+from src.order.kraken_trade_book_flows import pull_kraken_orders
+
 
 @pytest.fixture(scope="function")
 def kraken_orders_data():
     # Initialize the data dictionary.
     data: dict[str, dict[str, list[tuple[float, float, int]]]] = {}
 
-     # Create a mock function that gets the kraken provider asset order data.
+    # Create a mock function that gets the kraken provider asset order data.
     @task()
     async def mock_get_kraken_order_book(
         pair: str,
         count: int = 500,
     ) -> dict[str, dict[str, list[tuple[float, float, int]]]]:
-        
         if pair not in data:
             return {
-                pair : {
-                    "asks" : [],
-                    "bids" : [],
+                pair: {
+                    "asks": [],
+                    "bids": [],
                 }
             }
 
-        return {
-            pair : data[pair]
-        }
+        return {pair: data[pair]}
 
     with patch(
         "src.order.kraken_trade_book_flows.get_kraken_order_book",
         mock_get_kraken_order_book,
     ):
         yield data
-    
 
 
 def create_sample_data(engine: Engine):
@@ -187,7 +181,9 @@ def create_sample_data(engine: Engine):
 
 
 @pytest.mark.asyncio
-async def test_pull_when_both_database_and_kraken_is_empty(kraken_orders_data: dict[str, dict[str, list[tuple[float, float, int]]]]):
+async def test_pull_when_both_database_and_kraken_is_empty(
+    kraken_orders_data: dict[str, dict[str, list[tuple[float, float, int]]]],
+):
     # Clear any existing data in the database.
     engine = await get_engine_async()
     clear_database(engine)
@@ -203,7 +199,6 @@ async def test_pull_when_both_database_and_kraken_is_empty(kraken_orders_data: d
         usd_asset_id,
     ) = create_sample_data(engine)
 
-   
     # Call the pull_kraken_orders function with empty data
     await pull_kraken_orders(
         from_asset_ids=[btc_asset_id],
@@ -212,7 +207,9 @@ async def test_pull_when_both_database_and_kraken_is_empty(kraken_orders_data: d
 
 
 @pytest.mark.asyncio
-async def test_pull_when_database_is_empty(kraken_orders_data: dict[str, dict[str, list[tuple[float, float, int]]]]):
+async def test_pull_when_database_is_empty(
+    kraken_orders_data: dict[str, dict[str, list[tuple[float, float, int]]]],
+):
     # Clear any existing data in the mock database
     engine = await get_engine_async()
     clear_database(engine)
@@ -243,7 +240,9 @@ async def test_pull_when_database_is_empty(kraken_orders_data: dict[str, dict[st
 
         # Add a few orders to the kraken orders data.
         use_time = datetime.now(timezone.utc) - timedelta(seconds=10)
-        kraken_orders_data[btc_provider_asset.asset_code + usd_provider_asset.asset_code] = {
+        kraken_orders_data[
+            btc_provider_asset.asset_code + usd_provider_asset.asset_code
+        ] = {
             "asks": [(10000.0, 0.001, int(use_time.timestamp()))],
             "bids": [(9000.0, 0.001, int(use_time.timestamp()))],
         }
@@ -265,7 +264,9 @@ async def test_pull_when_database_is_empty(kraken_orders_data: dict[str, dict[st
         assert btc_usd_df.iloc[0]["provider_id"] == kraken_provider_id
         assert btc_usd_df.iloc[0]["from_asset_id"] == btc_asset_id
         assert btc_usd_df.iloc[0]["to_asset_id"] == usd_asset_id
-        assert int(btc_usd_df.iloc[0]["timestamp"].timestamp()) == int(use_time.timestamp())
+        assert int(btc_usd_df.iloc[0]["timestamp"].timestamp()) == int(
+            use_time.timestamp()
+        )
         assert btc_usd_df.iloc[0]["price"] == 10000.0
         assert btc_usd_df.iloc[0]["volume"] == 0.001
         usd_btc_stmt = select(ProviderAssetOrder).where(
@@ -278,14 +279,17 @@ async def test_pull_when_database_is_empty(kraken_orders_data: dict[str, dict[st
         assert usd_btc_df.iloc[0]["provider_id"] == kraken_provider_id
         assert usd_btc_df.iloc[0]["from_asset_id"] == usd_asset_id
         assert usd_btc_df.iloc[0]["to_asset_id"] == btc_asset_id
-        assert int(usd_btc_df.iloc[0]["timestamp"].timestamp()) == int(use_time.timestamp())
+        assert int(usd_btc_df.iloc[0]["timestamp"].timestamp()) == int(
+            use_time.timestamp()
+        )
         assert usd_btc_df.iloc[0]["price"] == 9000.0
         assert usd_btc_df.iloc[0]["volume"] == 0.001
 
 
-
 @pytest.mark.asyncio
-async def test_pull_when_database_has_an_existing_record(kraken_orders_data: dict[str, dict[str, list[tuple[float, float, int]]]]):
+async def test_pull_when_database_has_an_existing_record(
+    kraken_orders_data: dict[str, dict[str, list[tuple[float, float, int]]]],
+):
     # Clear any existing data in the database.
     engine = await get_engine_async()
     clear_database(engine)
@@ -315,12 +319,17 @@ async def test_pull_when_database_has_an_existing_record(kraken_orders_data: dic
         usd_provider_asset = session.execute(usd_provider_asset_stmt).scalar_one()
 
     # Add some mock data to the database. Floor the timestamp to the nearest second.
-    use_time = datetime.fromtimestamp(int((datetime.now(timezone.utc) - timedelta(seconds=5)).timestamp()), tz=timezone.utc)
+    use_time = datetime.fromtimestamp(
+        int((datetime.now(timezone.utc) - timedelta(seconds=5)).timestamp()),
+        tz=timezone.utc,
+    )
     ask_price = 10000.0
     ask_volume = 0.001
     bid_price = 9000.0
     bid_volume = 0.001
-    kraken_orders_data[btc_provider_asset.asset_code + usd_provider_asset.asset_code] = {
+    kraken_orders_data[
+        btc_provider_asset.asset_code + usd_provider_asset.asset_code
+    ] = {
         "asks": [(ask_price, ask_volume, int(use_time.timestamp()))],
         "bids": [(bid_price, bid_volume, int(use_time.timestamp()))],
     }
@@ -369,7 +378,9 @@ async def test_pull_when_database_has_an_existing_record(kraken_orders_data: dic
 
 
 @pytest.mark.asyncio
-async def test_pull_when_database_is_empty_and_source_has_multiple_records(kraken_orders_data: dict[str, dict[str, list[tuple[float, float, int]]]]):
+async def test_pull_when_database_is_empty_and_source_has_multiple_records(
+    kraken_orders_data: dict[str, dict[str, list[tuple[float, float, int]]]],
+):
     # Clear any existing data in the database.
     engine = await get_engine_async()
     clear_database(engine)
@@ -399,12 +410,17 @@ async def test_pull_when_database_is_empty_and_source_has_multiple_records(krake
         usd_provider_asset = session.execute(usd_provider_asset_stmt).scalar_one()
 
     # Add some mock data to the database. Floor the timestamp to the nearest second.
-    use_time = datetime.fromtimestamp(int((datetime.now(timezone.utc) - timedelta(seconds=5)).timestamp()), tz=timezone.utc)
+    use_time = datetime.fromtimestamp(
+        int((datetime.now(timezone.utc) - timedelta(seconds=5)).timestamp()),
+        tz=timezone.utc,
+    )
     ask_price = 10000.0
     ask_volume = 0.001
     bid_price = 9000.0
     bid_volume = 0.001
-    kraken_orders_data[btc_provider_asset.asset_code + usd_provider_asset.asset_code] = {
+    kraken_orders_data[
+        btc_provider_asset.asset_code + usd_provider_asset.asset_code
+    ] = {
         "asks": [(ask_price, ask_volume, int(use_time.timestamp()))],
         "bids": [(bid_price, bid_volume, int(use_time.timestamp()))],
     }
@@ -439,7 +455,9 @@ async def test_pull_when_database_is_empty_and_source_has_multiple_records(krake
 
 
 @pytest.mark.asyncio
-async def test_pull_when_database_is_empty_and_source_has_multiple_from_and_to_asset_ids(kraken_orders_data: dict[str, dict[str, list[tuple[float, float, int]]]]):
+async def test_pull_when_database_is_empty_and_source_has_multiple_from_and_to_asset_ids(
+    kraken_orders_data: dict[str, dict[str, list[tuple[float, float, int]]]],
+):
     # Clear any existing data in the mock database
     engine = await get_engine_async()
     clear_database(engine)
@@ -472,18 +490,25 @@ async def test_pull_when_database_is_empty_and_source_has_multiple_from_and_to_a
             ProviderAsset.asset_id == usd_asset_id,
         )
         usd_provider_asset = session.execute(usd_provider_asset_stmt).scalar_one()
-    
+
     # Add some mock data to the source.
-    use_time = datetime.fromtimestamp(int((datetime.now(timezone.utc) - timedelta(seconds=5)).timestamp()), tz=timezone.utc)
+    use_time = datetime.fromtimestamp(
+        int((datetime.now(timezone.utc) - timedelta(seconds=5)).timestamp()),
+        tz=timezone.utc,
+    )
     ask_price = 10000.0
     ask_volume = 0.001
     bid_price = 9000.0
     bid_volume = 0.001
-    kraken_orders_data[btc_provider_asset.asset_code + usd_provider_asset.asset_code] = {
+    kraken_orders_data[
+        btc_provider_asset.asset_code + usd_provider_asset.asset_code
+    ] = {
         "asks": [(ask_price, ask_volume, int(use_time.timestamp()))],
         "bids": [(bid_price, bid_volume, int(use_time.timestamp()))],
     }
-    kraken_orders_data[eth_provider_asset.asset_code + usd_provider_asset.asset_code] = {
+    kraken_orders_data[
+        eth_provider_asset.asset_code + usd_provider_asset.asset_code
+    ] = {
         "asks": [(ask_price, ask_volume, int(use_time.timestamp()))],
         "bids": [(bid_price, bid_volume, int(use_time.timestamp()))],
     }
@@ -545,9 +570,10 @@ async def test_pull_when_database_is_empty_and_source_has_multiple_from_and_to_a
     assert usd_eth_df.iloc[0]["volume"] == bid_volume
 
 
-
 @pytest.mark.asyncio
-async def test_pull_when_database_has_one_duplicate_and_multiple_non_duplicates(kraken_orders_data: dict[str, dict[str, list[tuple[float, float, int]]]]):
+async def test_pull_when_database_has_one_duplicate_and_multiple_non_duplicates(
+    kraken_orders_data: dict[str, dict[str, list[tuple[float, float, int]]]],
+):
     # Clear any existing data in the mock database
     engine = await get_engine_async()
     clear_database(engine)
@@ -577,18 +603,23 @@ async def test_pull_when_database_has_one_duplicate_and_multiple_non_duplicates(
         usd_provider_asset = session.execute(usd_provider_asset_stmt).scalar_one()
 
     # Add some mock data to the source.
-    use_time = datetime.fromtimestamp(int((datetime.now(timezone.utc) - timedelta(seconds=5)).timestamp()), tz=timezone.utc)
-    kraken_orders_data[btc_provider_asset.asset_code + usd_provider_asset.asset_code] = {
+    use_time = datetime.fromtimestamp(
+        int((datetime.now(timezone.utc) - timedelta(seconds=5)).timestamp()),
+        tz=timezone.utc,
+    )
+    kraken_orders_data[
+        btc_provider_asset.asset_code + usd_provider_asset.asset_code
+    ] = {
         "asks": [
             (10000.0, 0.001, int(use_time.timestamp())),
             (50000.0, 0.002, int(use_time.timestamp())),
             (100000.0, 0.003, int(use_time.timestamp())),
-            ],
+        ],
         "bids": [
             (9000.0, 0.001, int(use_time.timestamp())),
             (40000.0, 0.002, int(use_time.timestamp())),
             (80000.0, 0.003, int(use_time.timestamp())),
-            ],
+        ],
     }
 
     # Add the same data to the mock database.
@@ -606,11 +637,19 @@ async def test_pull_when_database_has_one_duplicate_and_multiple_non_duplicates(
         session.commit()
 
     # Ensure the state of the database has 1.
-    assert len(pd.read_sql(select(ProviderAssetOrder).where(
-        ProviderAssetOrder.provider_id == provider_id,
-        ProviderAssetOrder.from_asset_id == btc_asset_id,
-        ProviderAssetOrder.to_asset_id == usd_asset_id,
-    ), engine)) == 1
+    assert (
+        len(
+            pd.read_sql(
+                select(ProviderAssetOrder).where(
+                    ProviderAssetOrder.provider_id == provider_id,
+                    ProviderAssetOrder.from_asset_id == btc_asset_id,
+                    ProviderAssetOrder.to_asset_id == usd_asset_id,
+                ),
+                engine,
+            )
+        )
+        == 1
+    )
 
     # Call the pull_kraken_orders function with empty data
     await pull_kraken_orders(
@@ -636,7 +675,9 @@ async def test_pull_when_database_has_one_duplicate_and_multiple_non_duplicates(
 
 
 @pytest.mark.asyncio
-async def test_pull_when_database_has_one_duplicate_and_source_has_from_and_to_asset_ids(kraken_orders_data: dict[str, dict[str, list[tuple[float, float, int]]]]):
+async def test_pull_when_database_has_one_duplicate_and_source_has_from_and_to_asset_ids(
+    kraken_orders_data: dict[str, dict[str, list[tuple[float, float, int]]]],
+):
     # Clear any existing data in the mock database
     engine = await get_engine_async()
     clear_database(engine)
@@ -664,27 +705,34 @@ async def test_pull_when_database_has_one_duplicate_and_source_has_from_and_to_a
             ProviderAsset.asset_id == usd_asset_id,
         )
         usd_provider_asset = session.execute(usd_provider_asset_stmt).scalar_one()
-        eth_provider_asset_stmt = select(ProviderAsset).where(  
+        eth_provider_asset_stmt = select(ProviderAsset).where(
             ProviderAsset.provider_id == provider_id,
             ProviderAsset.asset_id == eth_asset_id,
         )
         eth_provider_asset = session.execute(eth_provider_asset_stmt).scalar_one()
 
     # Add some mock data to the source.
-    use_time = datetime.fromtimestamp(int((datetime.now(timezone.utc) - timedelta(seconds=5)).timestamp()), tz=timezone.utc)
-    kraken_orders_data[btc_provider_asset.asset_code + usd_provider_asset.asset_code] = {
+    use_time = datetime.fromtimestamp(
+        int((datetime.now(timezone.utc) - timedelta(seconds=5)).timestamp()),
+        tz=timezone.utc,
+    )
+    kraken_orders_data[
+        btc_provider_asset.asset_code + usd_provider_asset.asset_code
+    ] = {
         "asks": [
             (10000.0, 0.001, int(use_time.timestamp())),
             (50000.0, 0.002, int(use_time.timestamp())),
             (100000.0, 0.003, int(use_time.timestamp())),
-            ],
+        ],
         "bids": [
             (9000.0, 0.001, int(use_time.timestamp())),
             (40000.0, 0.002, int(use_time.timestamp())),
             (80000.0, 0.003, int(use_time.timestamp())),
-            ],
+        ],
     }
-    kraken_orders_data[eth_provider_asset.asset_code + usd_provider_asset.asset_code] = {
+    kraken_orders_data[
+        eth_provider_asset.asset_code + usd_provider_asset.asset_code
+    ] = {
         "asks": [(10000.0, 0.001, int(use_time.timestamp()))],
         "bids": [(9000.0, 0.001, int(use_time.timestamp()))],
     }
@@ -704,11 +752,19 @@ async def test_pull_when_database_has_one_duplicate_and_source_has_from_and_to_a
         session.commit()
 
     # Ensure the state of the database has 1.
-    assert len(pd.read_sql(select(ProviderAssetOrder).where(
-        ProviderAssetOrder.provider_id == provider_id,
-        ProviderAssetOrder.from_asset_id == btc_asset_id,
-        ProviderAssetOrder.to_asset_id == usd_asset_id,
-    ), engine)) == 1
+    assert (
+        len(
+            pd.read_sql(
+                select(ProviderAssetOrder).where(
+                    ProviderAssetOrder.provider_id == provider_id,
+                    ProviderAssetOrder.from_asset_id == btc_asset_id,
+                    ProviderAssetOrder.to_asset_id == usd_asset_id,
+                ),
+                engine,
+            )
+        )
+        == 1
+    )
 
     # Call the pull_kraken_orders function with empty data
     await pull_kraken_orders(
@@ -745,4 +801,3 @@ async def test_pull_when_database_has_one_duplicate_and_source_has_from_and_to_a
     )
     usd_eth_df = pd.read_sql(usd_eth_stmt, engine)
     assert len(usd_eth_df) == 1
-
