@@ -342,6 +342,7 @@ async def test_multiple_existing_and_new_providers():
         assert len(new_providers) == 2
         assert set(new_providers["provider_external_code"]) == {"29", "79"}
 
+
 @pytest.mark.asyncio
 async def test_empty_content_in_database_and_new_content():
     # Clear the database.
@@ -358,7 +359,7 @@ async def test_empty_content_in_database_and_new_content():
             df = pd.read_json(f)
             df = df.loc[df["ID"].isin([82])]
             return df
-            
+
     # Setup the mock news content function.
     @task()
     async def mock_get_coindesk_news_content():
@@ -391,7 +392,9 @@ async def test_empty_content_in_database_and_new_content():
                 )
             )
             session.commit()
-            bitcoin_world_provider_id = session.execute(select(Provider.id).where(Provider.provider_external_code == "82")).scalar_one()
+            bitcoin_world_provider_id = session.execute(
+                select(Provider.id).where(Provider.provider_external_code == "82")
+            ).scalar_one()
 
         # Run the content flow.
         await pull_coindesk_news_content()

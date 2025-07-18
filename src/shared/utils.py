@@ -1,10 +1,8 @@
 import os
-from prefect import task, get_run_logger
+from prefect import task
 from prefect.blocks.system import Secret
 import pandas as pd
-from typing import List, Tuple, Literal
-from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy import create_engine
+from typing import List, Tuple
 
 
 @task()
@@ -193,36 +191,3 @@ def compare_dataframes(
         )
 
     return records_in_1_not_2, records_in_2_not_1, exact_matches, different_records  # type: ignore
-
-
-def postgres_upsert(table, conn, keys, data_iter):
-    data = [dict(zip(keys, row)) for row in data_iter]
-    insert_statement = insert(table.table).values(data)
-    upsert_statement = insert_statement.on_conflict_do_update(
-        constraint=f"PK_{table.table.name}",
-        set_={c.key: c for c in insert_statement.excluded},
-    )
-    result = conn.execute(upsert_statement)
-    return result
-
-
-@task()
-async def set_data(
-    table_name: str,
-    data: pd.DataFrame,
-    operation_type: Literal["insert", "append", "upsert"] = "upsert",
-):
-    logger = get_run_logger()
-    url = await get_postgres_url()
-    engine = create_engine(url)
-    if operation_type == "insert":
-        logger.info(f"Inserting {len(data)} row(s) to {table_name}")
-        data.to_sql(table_name, engine, if_exists="replace", index=False)
-    elif operation_type == "append":
-        logger.info(f"Appending {len(data)} row(s) to {table_name}")
-        data.to_sql(table_name, engine, if_exists="append", index=False)
-    elif operation_type == "upsert":
-        logger.info(f"Upserting {len(data)} row(s) to {table_name}")
-        data.to_sql(
-            table_name, engine, if_exists="append", index=False, method=postgres_upsert
-        )

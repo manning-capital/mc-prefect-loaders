@@ -40,7 +40,9 @@ if __name__ == "__main__":
         concurrency_limit=ConcurrencyLimitConfig(
             limit=1, collision_strategy=ConcurrencyLimitStrategy.CANCEL_NEW
         ),
-        schedule=Interval(dt.timedelta(hours=1), anchor_date=dt.datetime(2000, 1, 1, 0, 0, 0)),
+        schedule=Interval(
+            dt.timedelta(hours=1), anchor_date=dt.datetime(2000, 1, 1, 0, 0, 0)
+        ),
         build=False,
         push=False,
     )

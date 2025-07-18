@@ -1,7 +1,12 @@
+import os
+import sys
+
+sys.path.append(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir))
+
 import requests
 import datetime as dt
 import pandas as pd
-from prefect import flow, get_run_logger, task
+from prefect import flow, get_run_logger, task, serve
 from prefect.concurrency.asyncio import rate_limit
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -229,7 +234,7 @@ async def save_coindesk_news_content(
     current_content_data: pd.DataFrame,
     raw_content_data: pd.DataFrame,
 ) -> pd.DataFrame:
-    logger = get_run_logger()
+    get_run_logger()
 
     # Get map of provider external code to provider id.
     provider_map = dict(
@@ -353,3 +358,11 @@ async def pull_coindesk_news_content():
 
     # Log the number of content items saved.
     logger.info(f"Saved {len(provider_content_data)} content items to database.")
+
+
+if __name__ == "__main__":
+    pull_coindesk_news_content_deployment = pull_coindesk_news_content.to_deployment(
+        name="pull_coindesk_news_content_debug",
+        concurrency_limit=1,
+    )
+    serve(pull_coindesk_news_content_deployment)  # type: ignore

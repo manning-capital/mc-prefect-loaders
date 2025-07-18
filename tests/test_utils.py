@@ -136,14 +136,11 @@ def test_table_2_empty():
     assert set(in_1_not_2.dtypes.items()) == set(empty_df.dtypes.items())
     assert set(in_2_not_1.dtypes.items()) == set(empty_df.dtypes.items())
 
+
 def test_there_are_only_exact_matches():
     """Test comparison with only exact matches."""
-    old_df = pd.DataFrame(
-        {"id": [1, 2, 3], "name": ["Alice", "Bob", "Charlie"]}
-    )
-    new_df = pd.DataFrame(
-        {"id": [1, 2, 3], "name": ["Alice", "Bob", "Charlie"]}
-    )
+    old_df = pd.DataFrame({"id": [1, 2, 3], "name": ["Alice", "Bob", "Charlie"]})
+    new_df = pd.DataFrame({"id": [1, 2, 3], "name": ["Alice", "Bob", "Charlie"]})
     in_1_not_2, in_2_not_1, exact, different = compare_dataframes(
         old_df, new_df, key_columns=["id"]
     )
@@ -156,11 +153,10 @@ def test_there_are_only_exact_matches():
     assert set(in_1_not_2.dtypes.items()) == set(old_df.dtypes.items())
     assert set(in_2_not_1.dtypes.items()) == set(old_df.dtypes.items())
 
+
 def test_there_are_exact_matches_and_new_records():
     """Test comparison with exact matches and new records."""
-    old_df = pd.DataFrame(
-        {"id": [1, 2, 3], "name": ["Alice", "Bob", "Charlie"]}
-    )
+    old_df = pd.DataFrame({"id": [1, 2, 3], "name": ["Alice", "Bob", "Charlie"]})
     new_df = pd.DataFrame(
         {"id": [1, 2, 3, 4], "name": ["Alice", "Bob", "Charlie", "David"]}
     )
@@ -175,6 +171,7 @@ def test_there_are_exact_matches_and_new_records():
     assert set(different.dtypes.items()) == set(old_df.dtypes.items())
     assert set(in_1_not_2.dtypes.items()) == set(old_df.dtypes.items())
     assert set(in_2_not_1.dtypes.items()) == set(old_df.dtypes.items())
+
 
 def test_multiple_key_columns():
     """Test comparison with multiple key columns."""
