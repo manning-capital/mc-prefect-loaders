@@ -79,6 +79,22 @@ def compare_dataframes(
     all_columns = list(set(table_1.columns) | set(table_2.columns))
     comparison_columns = [col for col in all_columns if col not in key_columns]
 
+    # Check if the the columns are the same in both dataframes.
+    symmetric_difference = set(table_1.columns) ^ set(table_2.columns)
+    if len(symmetric_difference) != 0:
+        raise ValueError(
+            "Columns are not the same in both dataframes: {column_differences}".format(
+                column_differences=", ".join(symmetric_difference)
+            )
+        )
+
+    # Check that the comparison columns have the same data types in both dataframes. Ignore
+    for col in comparison_columns:
+        if table_1[col].dtype != table_2[col].dtype:
+            raise ValueError(
+                f"Column '{col}' has the type {table_1[col].dtype} in table_1 and {table_2[col].dtype} in table_2."
+            )
+
     # Merge DataFrames on key columns with outer join and indicators
     merged_df = table_1.merge(
         table_2, on=key_columns, how="outer", suffixes=("_1", "_2"), indicator=True
@@ -86,33 +102,29 @@ def compare_dataframes(
 
     # Records in table_1 but not in table_2
     records_in_1_not_2 = merged_df[merged_df["_merge"] == "left_only"].copy()
-    if not records_in_1_not_2.empty:
-        # Keep only table_1 columns and rename them back
-        records_in_1_not_2 = records_in_1_not_2.drop(
-            columns=[
-                col
-                for col in records_in_1_not_2.columns
-                if col.endswith("_2") or col == "_merge"
-            ]
-        )
-        records_in_1_not_2.columns = [
-            col.replace("_1", "") for col in records_in_1_not_2.columns
+    records_in_1_not_2 = records_in_1_not_2.drop(
+        columns=[
+            col
+            for col in records_in_1_not_2.columns
+            if col.endswith("_2") or col == "_merge"
         ]
+    )
+    records_in_1_not_2.columns = [
+        col.replace("_1", "") for col in records_in_1_not_2.columns
+    ]
 
     # Records in table_2 but not in table_1
     records_in_2_not_1 = merged_df[merged_df["_merge"] == "right_only"].copy()
-    if not records_in_2_not_1.empty:
-        # Keep only table_2 columns and rename them back
-        records_in_2_not_1 = records_in_2_not_1.drop(
-            columns=[
-                col
-                for col in records_in_2_not_1.columns
-                if col.endswith("_1") or col == "_merge"
-            ]
-        )
-        records_in_2_not_1.columns = [
-            col.replace("_2", "") for col in records_in_2_not_1.columns
+    records_in_2_not_1 = records_in_2_not_1.drop(
+        columns=[
+            col
+            for col in records_in_2_not_1.columns
+            if col.endswith("_1") or col == "_merge"
         ]
+    )
+    records_in_2_not_1.columns = [
+        col.replace("_2", "") for col in records_in_2_not_1.columns
+    ]
 
     # Records that exist in both tables
     common_records = merged_df[merged_df["_merge"] == "both"].copy()
@@ -141,38 +153,44 @@ def compare_dataframes(
         different_records = common_records[different_mask].copy()  # type: ignore
 
         # Clean up exact_matches - use table_1 values (or table_2, doesn't matter since they're identical)
-        if not exact_matches.empty:  # type: ignore
-            for col in comparison_columns:
-                col_1 = f"{col}_1"
-                if col_1 in exact_matches.columns:  # type: ignore
-                    exact_matches[col] = exact_matches[col_1]  # type: ignore
-
-            exact_matches = exact_matches.drop(
-                columns=[  # type: ignore
-                    col
-                    for col in exact_matches.columns  # type: ignore
-                    if col.endswith("_1") or col.endswith("_2") or col == "_merge"
-                ]
-            )
+        for col in comparison_columns:
+            col_1 = f"{col}_1"
+            if col_1 in exact_matches.columns:  # type: ignore
+                exact_matches[col] = exact_matches[col_1]  # type: ignore
+        exact_matches = exact_matches.drop(  # type: ignore
+            columns=[  # type: ignore
+                col
+                for col in exact_matches.columns  # type: ignore
+                if col.endswith("_1") or col.endswith("_2") or col == "_merge"
+            ]
+        )
 
         # Clean up different_records - use table_2 values (newer data)
-        if not different_records.empty:  # type: ignore
-            for col in comparison_columns:
-                col_2 = f"{col}_2"
-                if col_2 in different_records.columns:  # type: ignore
-                    different_records[col] = different_records[col_2]  # type: ignore
-
-            different_records = different_records.drop(
-                columns=[  # type: ignore
-                    col
-                    for col in different_records.columns  # type: ignore
-                    if col.endswith("_1") or col.endswith("_2") or col == "_merge"
-                ]
-            )
+        for col in comparison_columns:
+            col_2 = f"{col}_2"
+            if col_2 in different_records.columns:  # type: ignore
+                different_records[col] = different_records[col_2]  # type: ignore
+        different_records = different_records.drop(  # type: ignore
+            columns=[  # type: ignore
+                col
+                for col in different_records.columns  # type: ignore
+                if col.endswith("_1") or col.endswith("_2") or col == "_merge"
+            ]
+        )
     else:
         # No common records
-        exact_matches = pd.DataFrame()
-        different_records = pd.DataFrame()
+        exact_matches = pd.DataFrame(
+            {
+                column_name: pd.Series(dtype=table_1[column_name].dtype)
+                for column_name in table_1.columns
+            }
+        )
+        different_records = pd.DataFrame(
+            {
+                column_name: pd.Series(dtype=table_1[column_name].dtype)
+                for column_name in table_1.columns
+            }
+        )
 
     return records_in_1_not_2, records_in_2_not_1, exact_matches, different_records  # type: ignore
 

@@ -56,10 +56,14 @@ def test_basic_comparison():
     assert different.iloc[0]["age"] == 31  # Should use new value
 
 
-def test_empty_dataframes():
+def test_both_empty_dataframes():
     """Test comparison with empty DataFrames."""
-    empty_df = pd.DataFrame(columns=pd.Index(["id", "name"]))
-    data_df = pd.DataFrame({"id": [1, 2], "name": ["Alice", "Bob"]})
+    empty_df = pd.DataFrame(
+        {
+            "id": pd.Series([], dtype="Int64"),
+            "name": pd.Series([], dtype="object"),
+        }
+    )
 
     # Both empty
     in_1_not_2, in_2_not_1, exact, different = compare_dataframes(
@@ -69,16 +73,108 @@ def test_empty_dataframes():
     assert len(in_2_not_1) == 0
     assert len(exact) == 0
     assert len(different) == 0
+    assert set(exact.dtypes.items()) == set(empty_df.dtypes.items())
+    assert set(different.dtypes.items()) == set(empty_df.dtypes.items())
+    assert set(in_1_not_2.dtypes.items()) == set(empty_df.dtypes.items())
+    assert set(in_2_not_1.dtypes.items()) == set(empty_df.dtypes.items())
 
-    # One empty
+
+def test_table_1_empty():
+    """Test comparison with one empty dataframe."""
+    empty_df = pd.DataFrame(
+        {
+            "id": pd.Series([], dtype="Int64"),
+            "name": pd.Series([], dtype="object"),
+        }
+    )
+    data_df = pd.DataFrame(
+        {
+            "id": pd.Series([1, 2], dtype="Int64"),
+            "name": pd.Series(["Alice", "Bob"], dtype="object"),
+        }
+    )
+
+    in_1_not_2, in_2_not_1, exact, different = compare_dataframes(
+        data_df, empty_df, key_columns=["id"]
+    )
+
+    assert len(in_1_not_2) == 2
+    assert len(in_2_not_1) == 0
+    assert len(exact) == 0
+    assert len(different) == 0
+    assert set(exact.dtypes.items()) == set(empty_df.dtypes.items())
+    assert set(different.dtypes.items()) == set(empty_df.dtypes.items())
+    assert set(in_1_not_2.dtypes.items()) == set(empty_df.dtypes.items())
+    assert set(in_2_not_1.dtypes.items()) == set(empty_df.dtypes.items())
+
+
+def test_table_2_empty():
+    """Test comparison with one empty dataframe."""
+    empty_df = pd.DataFrame(
+        {
+            "id": pd.Series([], dtype="Int64"),
+            "name": pd.Series([], dtype="object"),
+        }
+    )
+    data_df = pd.DataFrame(
+        {
+            "id": pd.Series([1, 2], dtype="Int64"),
+            "name": pd.Series(["Alice", "Bob"], dtype="object"),
+        }
+    )
+
     in_1_not_2, in_2_not_1, exact, different = compare_dataframes(
         empty_df, data_df, key_columns=["id"]
     )
+
     assert len(in_1_not_2) == 0
     assert len(in_2_not_1) == 2
     assert len(exact) == 0
     assert len(different) == 0
+    assert set(exact.dtypes.items()) == set(empty_df.dtypes.items())
+    assert set(different.dtypes.items()) == set(empty_df.dtypes.items())
+    assert set(in_1_not_2.dtypes.items()) == set(empty_df.dtypes.items())
+    assert set(in_2_not_1.dtypes.items()) == set(empty_df.dtypes.items())
 
+def test_there_are_only_exact_matches():
+    """Test comparison with only exact matches."""
+    old_df = pd.DataFrame(
+        {"id": [1, 2, 3], "name": ["Alice", "Bob", "Charlie"]}
+    )
+    new_df = pd.DataFrame(
+        {"id": [1, 2, 3], "name": ["Alice", "Bob", "Charlie"]}
+    )
+    in_1_not_2, in_2_not_1, exact, different = compare_dataframes(
+        old_df, new_df, key_columns=["id"]
+    )
+    assert len(in_1_not_2) == 0
+    assert len(in_2_not_1) == 0
+    assert len(exact) == 3
+    assert len(different) == 0
+    assert set(exact.dtypes.items()) == set(old_df.dtypes.items())
+    assert set(different.dtypes.items()) == set(old_df.dtypes.items())
+    assert set(in_1_not_2.dtypes.items()) == set(old_df.dtypes.items())
+    assert set(in_2_not_1.dtypes.items()) == set(old_df.dtypes.items())
+
+def test_there_are_exact_matches_and_new_records():
+    """Test comparison with exact matches and new records."""
+    old_df = pd.DataFrame(
+        {"id": [1, 2, 3], "name": ["Alice", "Bob", "Charlie"]}
+    )
+    new_df = pd.DataFrame(
+        {"id": [1, 2, 3, 4], "name": ["Alice", "Bob", "Charlie", "David"]}
+    )
+    in_1_not_2, in_2_not_1, exact, different = compare_dataframes(
+        old_df, new_df, key_columns=["id"]
+    )
+    assert len(in_1_not_2) == 0
+    assert len(in_2_not_1) == 1
+    assert len(exact) == 3
+    assert len(different) == 0
+    assert set(exact.dtypes.items()) == set(old_df.dtypes.items())
+    assert set(different.dtypes.items()) == set(old_df.dtypes.items())
+    assert set(in_1_not_2.dtypes.items()) == set(old_df.dtypes.items())
+    assert set(in_2_not_1.dtypes.items()) == set(old_df.dtypes.items())
 
 def test_multiple_key_columns():
     """Test comparison with multiple key columns."""
@@ -121,19 +217,19 @@ def test_nan_values():
     """Test comparison with NaN values."""
     old_df = pd.DataFrame(
         {
-            "id": [1, 2, 3],
-            "name": ["Alice", "Bob", None],
-            "age": [25, None, 35],
-            "city": ["NYC", "LA", None],
+            "id": pd.Series([1, 2, 3], dtype="Int64"),
+            "name": pd.Series(["Alice", "Bob", None], dtype="object"),
+            "age": pd.Series([25, None, 35], dtype="Int64"),
+            "city": pd.Series(["NYC", "LA", None], dtype="object"),
         }
     )
 
     new_df = pd.DataFrame(
         {
-            "id": [1, 2, 3],
-            "name": ["Alice", None, "Charlie"],
-            "age": [25, 30, 35],
-            "city": ["NYC", "LA", "Chicago"],
+            "id": pd.Series([1, 2, 3], dtype="Int64"),
+            "name": pd.Series(["Alice", None, "Charlie"], dtype="object"),
+            "age": pd.Series([25, 30, 35], dtype="Int64"),
+            "city": pd.Series(["NYC", "LA", "Chicago"], dtype="object"),
         }
     )
 
@@ -146,37 +242,6 @@ def test_nan_values():
 
     # Test different records (where values changed, including NaN changes)
     assert len(different) == 2  # id=2 and id=3 have changes
-
-
-def test_different_column_sets():
-    """Test comparison when DataFrames have different columns."""
-    old_df = pd.DataFrame(
-        {"id": [1, 2, 3], "name": ["Alice", "Bob", "Charlie"], "age": [25, 30, 35]}
-    )
-
-    new_df = pd.DataFrame(
-        {
-            "id": [1, 2, 4],
-            "name": ["Alice", "Bob Updated", "David"],
-            "city": ["NYC", "LA", "Chicago"],  # Different column
-        }
-    )
-
-    in_1_not_2, in_2_not_1, exact, different = compare_dataframes(
-        old_df, new_df, key_columns=["id"]
-    )
-
-    # Test records in old but not new
-    assert len(in_1_not_2) == 1  # id=3
-
-    # Test records in new but not old
-    assert len(in_2_not_1) == 1  # id=4
-
-    # Test exact matches
-    assert len(exact) == 1  # id=1 (only name matches)
-
-    # Test different records
-    assert len(different) == 1  # id=2 (name changed)
 
 
 def test_missing_key_columns():
@@ -271,3 +336,17 @@ def test_complex_data_types():
     different_record = different.loc[different["id"] == 3].iloc[0]  # type: ignore
     assert different_record["name"] == "Charlie Updated"
     assert different_record["is_active"]
+
+
+def test_mismatched_columns():
+    """Test comparison with mismatched columns."""
+    old_df = pd.DataFrame({"id": [1, 2, 3], "age": [25, 30, 35]})
+
+    new_df = pd.DataFrame(
+        {"id": [1, 2, 3], "name": ["Alice", "Bob", "Charlie"], "age": [25, 30, 35]}
+    )
+
+    with pytest.raises(ValueError):
+        in_1_not_2, in_2_not_1, exact, different = compare_dataframes(
+            old_df, new_df, key_columns=["id"]
+        )

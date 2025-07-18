@@ -5,9 +5,9 @@ from prefect import flow, get_run_logger, task
 from prefect.concurrency.asyncio import rate_limit
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-from mc_postgres_db.models import Provider, ProviderType, ProviderContent
-from mc_postgres_db.prefect.asyncio.tasks import get_engine
-from src.shared.utils import compare_dataframes, set_data
+from mc_postgres_db.models import Provider, ProviderType, ProviderContent, ContentType
+from mc_postgres_db.prefect.asyncio.tasks import get_engine, set_data
+from src.shared.utils import compare_dataframes
 
 
 @task()
@@ -82,6 +82,25 @@ async def get_news_providers_from_database(
         Provider.provider_type_id == news_provider_type_id,
     )
     provider_data = pd.read_sql(stmt, engine)
+
+    # Drop columns.
+    provider_data = provider_data.drop(
+        columns=["created_at", "updated_at", "description"]
+    )
+
+    # Format the provider data.
+    provider_data["id"] = provider_data["id"].astype("Int64")
+    provider_data["provider_external_code"] = provider_data[
+        "provider_external_code"
+    ].astype("str")
+    provider_data["is_active"] = provider_data["is_active"].astype("bool")
+    provider_data["underlying_provider_id"] = provider_data[
+        "underlying_provider_id"
+    ].astype("Int64")
+    provider_data["provider_type_id"] = provider_data["provider_type_id"].astype(
+        "Int64"
+    )
+
     return provider_data
 
 
@@ -95,7 +114,6 @@ async def save_coindesk_news_providers(
     # Format the raw provider data.
     new_provider_data: pd.DataFrame = new_raw_provider_data.copy(deep=True)  # type: ignore
     new_provider_data["provider_type_id"] = news_provider_type_id
-    new_provider_data["is_active"] = True
     new_provider_data["underlying_provider_id"] = coindesk_provider_id
     new_provider_data.rename(
         columns={
@@ -103,12 +121,10 @@ async def save_coindesk_news_providers(
             "NAME": "name",
             "URL": "url",
             "IMAGE_URL": "image_url",
-            "DESCRIPTION": "description",
-            "STATUS": "is_active",
         },
         inplace=True,
     )
-    new_provider_data["is_active"] = new_provider_data["is_active"].map(
+    new_provider_data["is_active"] = new_provider_data["STATUS"].map(
         lambda x: True if x == "ACTIVE" else False
     )
     new_provider_data: pd.DataFrame = new_provider_data[
@@ -119,12 +135,27 @@ async def save_coindesk_news_providers(
                 "name",
                 "url",
                 "image_url",
-                "description",
                 "is_active",
                 "underlying_provider_id",
             ]
         )
     ]  # type: ignore
+    new_provider_data["provider_external_code"] = new_provider_data[
+        "provider_external_code"
+    ].astype("str")
+    new_provider_data = new_provider_data.merge(
+        old_provider_data[["id", "provider_external_code"]].drop_duplicates(),
+        on="provider_external_code",
+        how="left",
+    )
+    new_provider_data["id"] = new_provider_data["id"].astype("Int64")
+    new_provider_data["is_active"] = new_provider_data["is_active"].astype("bool")
+    new_provider_data["underlying_provider_id"] = new_provider_data[
+        "underlying_provider_id"
+    ].astype("Int64")
+    new_provider_data["provider_type_id"] = new_provider_data[
+        "provider_type_id"
+    ].astype("Int64")
 
     # Compare the provider data to the current provider data.
     dropped, added, _, different_records = compare_dataframes(
@@ -156,30 +187,121 @@ async def get_coindesk_news_content_from_database(
     ids = raw_content_data["ID"].drop_duplicates().tolist()
 
     # Get the existing content data from the database.
-    stmt = select(ProviderContent).where(ProviderContent.content_external_code.in_(ids))
+    stmt = select(
+        ProviderContent.id,
+        ProviderContent.timestamp,
+        ProviderContent.provider_id,
+        ProviderContent.content_external_code,
+        ProviderContent.content_type_id,
+        ProviderContent.authors,
+        ProviderContent.title,
+        ProviderContent.content,
+    ).where(ProviderContent.content_external_code.in_(ids))
     content_data = pd.read_sql(stmt, engine)
+
+    # Format the content data.
+    content_data["id"] = content_data["id"].astype("Int64")
+    content_data["timestamp"] = content_data["timestamp"].astype("datetime64[ns]")
+    content_data["provider_id"] = content_data["provider_id"].astype("Int64")
+    content_data["content_external_code"] = content_data[
+        "content_external_code"
+    ].astype("str")
+    content_data["content_type_id"] = content_data["content_type_id"].astype("Int64")
+    content_data["authors"] = content_data["authors"].astype("str")
+    content_data["title"] = content_data["title"].astype("str")
+    content_data["content"] = content_data["content"].astype("str")
 
     return content_data
 
 
 @task()
+async def get_news_content_type_id() -> int:
+    engine = await get_engine()
+    with Session(engine) as session:
+        stmt = select(ContentType.id).where(ContentType.name == "NEWS")
+        return session.execute(stmt).scalar_one()
+
+
+@task()
 async def save_coindesk_news_content(
-    content_type_id: int,
-    news_provider_type_id: int,
+    news_content_type_id: int,
     provider_data: pd.DataFrame,
     current_content_data: pd.DataFrame,
     raw_content_data: pd.DataFrame,
 ) -> pd.DataFrame:
+    logger = get_run_logger()
+
+    # Get map of provider external code to provider id.
+    provider_map = dict(
+        zip(provider_data["provider_external_code"], provider_data["id"])
+    )
+
     # Format the raw content data.
     new_content_data: pd.DataFrame = raw_content_data.copy(deep=True)  # type: ignore
-    new_content_data["provider_external_code"] = new_content_data["SOURCE_ID"].astype(
-        str
+    new_content_data["timestamp"] = new_content_data["PUBLISHED_ON"].apply(
+        lambda x: dt.datetime.fromtimestamp(x)
+    )
+    new_content_data["provider_id"] = (
+        new_content_data["SOURCE_ID"]
+        .astype(str)
+        .apply(lambda x: provider_map.get(x, None))
     )
     new_content_data["content_external_code"] = new_content_data["ID"].astype(str)
-    new_content_data["content_type_id"] = content_type_id
-    new_content_data["is_active"] = new_content_data["STATUS"].map(
-        lambda x: True if x == "ACTIVE" else False
+    new_content_data["content_type_id"] = news_content_type_id
+    new_content_data["authors"] = new_content_data["AUTHORS"]
+    new_content_data["title"] = new_content_data["TITLE"]
+    new_content_data["content"] = new_content_data["BODY"]
+    new_content_data = new_content_data[
+        pd.Index(
+            [
+                "timestamp",
+                "provider_id",
+                "content_external_code",
+                "content_type_id",
+                "authors",
+                "title",
+                "content",
+            ]
+        )
+    ]  # type: ignore
+    new_content_data = new_content_data.merge(
+        current_content_data[["id", "content_external_code"]].drop_duplicates(),
+        on="content_external_code",
+        how="left",
     )
+    new_content_data["id"] = new_content_data["id"].astype("Int64")
+    new_content_data["timestamp"] = new_content_data["timestamp"].astype(
+        "datetime64[ns]"
+    )
+    new_content_data["provider_id"] = new_content_data["provider_id"].astype("Int64")
+    new_content_data["content_external_code"] = new_content_data[
+        "content_external_code"
+    ].astype("str")
+    new_content_data["content_type_id"] = new_content_data["content_type_id"].astype(
+        "Int64"
+    )
+    new_content_data["authors"] = new_content_data["authors"].astype("str")
+
+    # Compare the content data to the current content data.
+    dropped, added, _, different_records = compare_dataframes(
+        current_content_data, new_content_data, ["content_external_code"]
+    )
+
+    # Combine the dropped, added, and different records.
+    combined_data = pd.concat([dropped, added, different_records])
+    combined_data = combined_data.reset_index(drop=True)
+
+    # Upsert the combined data to the database.
+    await set_data(
+        ProviderContent.__tablename__, combined_data, operation_type="upsert"
+    )
+
+    # Fetch the updated content data from the database.
+    updated_content_data = await get_coindesk_news_content_from_database(
+        raw_content_data
+    )
+
+    return updated_content_data
 
 
 @flow()
@@ -218,9 +340,15 @@ async def pull_coindesk_news_content():
         raw_content_data
     )
 
+    # Get the content type id for news content.
+    news_content_type_id = await get_news_content_type_id()
+
     # Save content data to database
     provider_content_data = await save_coindesk_news_content(
-        updated_provider_data, current_content_data, raw_content_data
+        news_content_type_id,
+        updated_provider_data,
+        current_content_data,
+        raw_content_data,
     )
 
     # Log the number of content items saved.
