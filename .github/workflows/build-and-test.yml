@@ -70,6 +70,6 @@ jobs:
         run: docker build -f Dockerfile.test -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME}}:test .
 
       # --- Run tests in Docker container (Test) ---
-      - name: Run tests in Docker container (Test)
+      - name: Run tests in Docker container
         id: run-test
-        run: docker run -rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME}}:test
+        run: docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME}}:test
