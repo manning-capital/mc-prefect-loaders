@@ -196,7 +196,7 @@ async def get_coindesk_news_content_from_database(
     engine = await get_engine()
 
     # Extract the id(s) from the raw content data as this will be used to find existing data with the content external code column.
-    ids = raw_content_data["ID"].drop_duplicates().tolist()
+    ids = raw_content_data["ID"].apply(str).drop_duplicates().tolist()
 
     # Get the existing content data from the database.
     stmt = select(
@@ -241,8 +241,6 @@ async def save_coindesk_news_content(
     current_content_data: pd.DataFrame,
     raw_content_data: pd.DataFrame,
 ) -> pd.DataFrame:
-    get_run_logger()
-
     # Get map of provider external code to provider id.
     provider_map = dict(
         zip(provider_data["provider_external_code"], provider_data["id"])
@@ -301,7 +299,9 @@ async def save_coindesk_news_content(
 
     # Add the new content to the database.
     await set_data(
-        ProviderContent.__tablename__, added.drop(columns=["id"]), operation_type="upsert"
+        ProviderContent.__tablename__,
+        added.drop(columns=["id"]),
+        operation_type="upsert",
     )
 
     # Update the existing content in the database.
