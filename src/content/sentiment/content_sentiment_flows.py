@@ -16,6 +16,7 @@ from src.content.sentiment.abstract import AbstractContentSentimentType
 from src.content.sentiment.sentiment_types import NLTKVaderContentSentimentType
 from prefect.cache_policies import NO_CACHE
 
+
 @task(cache_policy=NO_CACHE)
 async def get_unprocessed_content_sentiment_data(
     from_date: dt.date, to_date: dt.date, sentiment_type: AbstractContentSentimentType
