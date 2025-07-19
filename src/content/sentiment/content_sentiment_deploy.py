@@ -15,6 +15,7 @@ from prefect.docker import DockerImage
 from prefect.runner.storage import GitRepository
 from prefect.events import DeploymentEventTrigger
 from prefect_github import GitHubCredentials
+from src.content.coin_desk_content_flows import pull_coindesk_news_content
 
 
 if __name__ == "__main__":
@@ -47,8 +48,8 @@ if __name__ == "__main__":
                 match={"prefect.resource.id": "prefect.flow-run.*"},  # type: ignore
                 expect={"prefect.flow-run.Completed"},
                 match_related={
-                    "prefect.resource.name": "pull_coindesk_news_content",
-                    "prefect.resource.role": "deployment",
+                    "prefect.resource.name": pull_coindesk_news_content.name,
+                    "prefect.resource.role": "flow",
                 },  # type: ignore
                 for_each=["prefect.resource.id"],  # type: ignore
             )
