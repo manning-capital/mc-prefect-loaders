@@ -6,4 +6,4 @@ if __name__ == "__main__":
     GitHubCredentials(token=os.getenv("PREFECT_GITHUB_CREDENTIALS")).save(  # type: ignore
         "github-credentials", overwrite=True
     )
-    Secret(value=os.getenv("POSTGRESQL_URL")).save("postgresql-url", overwrite=True)  # type: ignore
+    Secret(value=os.getenv("POSTGRES_URL")).save("postgres-url", overwrite=True)  # type: ignore
