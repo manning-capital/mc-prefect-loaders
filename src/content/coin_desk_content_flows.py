@@ -357,15 +357,12 @@ async def pull_coindesk_news_content():
     news_content_type_id = await get_news_content_type_id()
 
     # Save content data to database
-    provider_content_data = await save_coindesk_news_content(
+    await save_coindesk_news_content(
         news_content_type_id,
         updated_provider_data,
         current_content_data,
         raw_content_data,
     )
-
-    # Log the number of content items saved.
-    logger.info(f"Saved {len(provider_content_data)} content items to database.")
 
 
 if __name__ == "__main__":
