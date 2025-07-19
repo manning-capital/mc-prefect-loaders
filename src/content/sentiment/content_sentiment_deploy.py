@@ -1,6 +1,5 @@
 import os
 import sys
-import datetime as dt
 
 # Ensure the parent directory is in the Python path.
 sys.path.append(
@@ -41,21 +40,19 @@ if __name__ == "__main__":
             limit=1, collision_strategy=ConcurrencyLimitStrategy.CANCEL_NEW
         ),
         triggers=[
-             DeploymentEventTrigger(
+            DeploymentEventTrigger(
                 name="Refresh content sentiment after coindesk content is refreshed",
                 description="This trigger will refresh the content sentiment after the coindesk content is refreshed.",
                 enabled=True,
-                match={"prefect.resource.id": "prefect.flow-run.*"}, # type: ignore
+                match={"prefect.resource.id": "prefect.flow-run.*"},  # type: ignore
                 expect={"prefect.flow-run.Completed"},
                 match_related={
                     "prefect.resource.name": "pull_coindesk_news_content",
-                    "prefect.resource.role": "deployment"
-                }, # type: ignore
-                for_each=[
-                    "prefect.resource.id"
-                ], # type: ignore
+                    "prefect.resource.role": "deployment",
+                },  # type: ignore
+                for_each=["prefect.resource.id"],  # type: ignore
             )
-        ], # type: ignore
+        ],  # type: ignore
         build=False,
         push=False,
     )

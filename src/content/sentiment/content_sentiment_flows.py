@@ -49,7 +49,10 @@ async def get_unprocessed_content_sentiment_data(
             ProviderContent.timestamp,
             ProviderContent.content,
             ProviderContentSentiment.sentiment_type_id,
-            *[getattr(ProviderContentSentiment, column) for column in sentiment_type.columns],
+            *[
+                getattr(ProviderContentSentiment, column)
+                for column in sentiment_type.columns
+            ],
         )
         .where(
             ProviderContent.content_type_id.in_(sentiment_type.get_content_type_ids()),

@@ -511,3 +511,70 @@ async def test_sentiment_analysis_handles_existing_and_new_sentiment_entries_cor
             is not None
         )
         assert content_without_sentiment_2_sentiment_data.created_at > current_time
+
+
+@pytest.mark.asyncio
+async def test_sentiment_analysis_handles_existing_partially_filled_sentiment_entries_correctly():
+    # Get the engine.
+    engine = await get_engine()
+
+    # Clear the database.
+    clear_database(engine)
+
+    # Create the base data.
+    _, provider, content_type, sentiment_type = await create_base_data(engine)
+
+    # Create provider content.
+    with Session(engine) as session:
+        content_with_sentiment = ProviderContent(
+            timestamp=dt.datetime.now(dt.timezone.utc).replace(tzinfo=None),
+            provider_id=provider.id,
+            content_external_code="1234567890",
+            content_type_id=content_type.id,
+            title="Test title",
+            authors="Test author",
+            content="This is a test content",
+        )
+        session.add(content_with_sentiment)
+        session.commit()
+        session.refresh(content_with_sentiment)
+
+    # Create provider content with sentiment data, but only some of the columns are filled.
+    with Session(engine) as session:
+        content_with_sentiment_partial = ProviderContentSentiment(
+            provider_content_id=content_with_sentiment.id,
+            sentiment_type_id=sentiment_type.id,
+            sentiment_score=0.5,
+            positive_sentiment_score=None,
+            negative_sentiment_score=None,
+            neutral_sentiment_score=None,
+        )
+        session.add(content_with_sentiment_partial)
+        session.commit()
+        session.refresh(content_with_sentiment_partial)
+
+    # Run the refresh content sentiment flow.
+    await refresh_content_sentiment(from_date=dt.date.today(), to_date=dt.date.today())
+
+    # Check the content sentiment data.
+    with Session(engine) as session:
+        content_with_sentiment_partial_sentiment_data = session.execute(
+            select(ProviderContentSentiment).where(
+                ProviderContentSentiment.provider_content_id
+                == content_with_sentiment.id
+            )
+        ).scalar_one()
+        assert content_with_sentiment_partial_sentiment_data is not None
+        assert content_with_sentiment_partial_sentiment_data.sentiment_score is not None
+        assert (
+            content_with_sentiment_partial_sentiment_data.positive_sentiment_score
+            is not None
+        )
+        assert (
+            content_with_sentiment_partial_sentiment_data.negative_sentiment_score
+            is not None
+        )
+        assert (
+            content_with_sentiment_partial_sentiment_data.neutral_sentiment_score
+            is not None
+        )
