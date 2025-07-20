@@ -9,13 +9,22 @@ from typing import Optional
 
 
 class AbstractProviderAssetMarketData(ABC):
-    key_columns = ["timestamp", "from_asset_id", "to_asset_id"]
-    required_market_data_columns = ["timestamp", "from_asset_code", "to_asset_code"]
-    required_asset_pair_data_columns = [
-        "pair_asset_code",
-        "from_asset_code",
-        "to_asset_code",
-    ]
+
+    @property
+    def key_columns(self):
+        return ["timestamp", "from_asset_id", "to_asset_id"]
+
+    @property
+    def required_market_data_columns(self):
+        return ["timestamp", "from_asset_code", "to_asset_code"]
+
+    @property
+    def required_asset_pair_data_columns(self):
+        return [
+            "pair_asset_code",
+            "from_asset_code",
+            "to_asset_code",
+        ]
 
     def __init__(self, engine: Engine):
         self.engine = engine
