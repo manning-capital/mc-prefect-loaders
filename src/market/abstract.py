@@ -9,7 +9,13 @@ from typing import Optional
 
 
 class AbstractProviderAssetMarketData(ABC):
-    __base_required_columns = ["timestamp", "from_asset_code", "to_asset_code"]
+    key_columns = ["timestamp", "from_asset_id", "to_asset_id"]
+    required_market_data_columns = ["timestamp", "from_asset_code", "to_asset_code"]
+    required_asset_pair_data_columns = [
+        "pair_asset_code",
+        "from_asset_code",
+        "to_asset_code",
+    ]
 
     def __init__(self, engine: Engine):
         self.engine = engine
@@ -87,12 +93,13 @@ class AbstractProviderAssetMarketData(ABC):
     @abstractmethod
     async def get_asset_pairs(
         self, asset_codes: pd.Series, as_of_date: Optional[dt.date] = None
-    ) -> pd.Series:
+    ) -> pd.DataFrame:
         pass
 
     @abstractmethod
     async def get_market_data(
         self,
+        pair_asset_code: str,
         from_asset_code: str,
         to_asset_code: str,
         as_of_date: Optional[dt.date] = None,

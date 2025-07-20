@@ -1,4 +1,9 @@
-from prefect import flow, task
+import os
+import sys
+
+sys.path.append(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir))
+
+from prefect import flow, task, serve, get_run_logger
 from src.market.market_data import KrakenProviderAssetMarketData
 from src.market.abstract import AbstractProviderAssetMarketData
 from mc_postgres_db.prefect.asyncio.tasks import get_engine, set_data
@@ -14,6 +19,8 @@ from mc_postgres_db.models import ProviderAssetMarket
 async def get_data(
     market_data: AbstractProviderAssetMarketData, as_of_date: Optional[dt.date] = None
 ) -> pd.DataFrame:
+    logger = get_run_logger()
+
     # Set the as_of_date to today if it is not provided.
     if as_of_date is None:
         as_of_date = dt.date.today()
@@ -31,55 +38,6 @@ async def get_data(
     provider_asset_map = market_data.get_provider_asset_map(as_of_date=as_of_date)
     asset_codes = pd.Series(provider_asset_map.keys())
 
-    # Get the asset pairs.
-    await rate_limit(market_data.rate_limit_name, strict=True)
-    asset_pairs = await market_data.get_asset_pairs(
-        asset_codes=asset_codes, as_of_date=as_of_date
-    )
-
-    # Check the type of the asset pairs.
-    if not asset_pairs.dtype == pd.Series:
-        raise ValueError("The asset pairs must be a pandas series.")
-
-    # Check that the data type of the series is a tuple.
-    if not all(isinstance(asset_pair, tuple) for asset_pair in asset_pairs):
-        raise ValueError("The asset pairs must be a tuple of two asset codes.")
-
-    # Check that each tuple has two elements.
-    if not all(len(asset_pair) == 2 for asset_pair in asset_pairs):
-        raise ValueError("The asset pairs must be a tuple of two asset codes.")
-
-    # Get the market data.
-    data = pd.DataFrame(
-        {
-            column_name: pd.Series(
-                [],
-                dtype=ProviderAssetMarket.__table__.columns[
-                    column_name
-                ].type.python_type,
-            )
-            for column_name in market_data.columns
-        }
-    )
-    for asset_pair in asset_pairs:
-        # Request the market data for the asset pair.
-        await rate_limit(market_data.rate_limit_name, strict=True)
-        data_i = await market_data.get_market_data(
-            from_asset_code=asset_pair[0],
-            to_asset_code=asset_pair[1],
-            as_of_date=as_of_date,
-        )
-
-        # Check that the data has the required columns.
-        invalid_columns = set(data_i.columns).symmetric_difference(
-            set(market_data.columns + market_data.__base_required_columns)
-        )
-        if invalid_columns:
-            raise ValueError(f"The data has invalid columns: {invalid_columns}")
-
-        # Add the data to the existing data.
-        data = pd.concat([data, data_i])
-
     # Check for any asset codes that are not in the provider asset map.
     missing_asset_codes = asset_codes.loc[
         ~asset_codes.isin(provider_asset_map.keys())
@@ -89,25 +47,120 @@ async def get_data(
             f"The following asset codes are not in the provider asset map: {missing_asset_codes}"
         )
 
-    # Match assets based on the asset_code column and the provider_asset table.
-    data["from_asset_id"] = data["from_asset_code"].apply(
-        lambda asset_code: provider_asset_map[asset_code]
-    )
-    data["to_asset_id"] = data["to_asset_code"].apply(
-        lambda asset_code: provider_asset_map[asset_code]
+    # Get the asset pairs.
+    await rate_limit(market_data.rate_limit_name, strict=True)
+    asset_pairs = await market_data.get_asset_pairs(
+        asset_codes=asset_codes, as_of_date=as_of_date
     )
 
-    # Add the provider id column.
-    data["provider_id"] = market_data.get_provider().id
+    # Check the type of the asset pairs.
+    if not isinstance(asset_pairs, pd.DataFrame):
+        raise ValueError("The asset pairs must be a pandas dataframe.")
 
-    # Drop the asset_code column.
-    data = data.drop(columns=["from_asset_code", "to_asset_code"])
+    # Check that the asset pairs have the required columns.
+    missing_asset_pair_columns = set(
+        market_data.required_asset_pair_data_columns
+    ) - set(asset_pairs.columns)
+    if len(missing_asset_pair_columns) > 0:
+        raise ValueError(
+            f"The asset pairs must have the following columns: {missing_asset_pair_columns}"
+        )
+
+    # Get the market data.
+    data = pd.DataFrame(
+        {
+            column_name: pd.Series(
+                [],
+                dtype=(
+                    "datetime64[ns]"
+                    if ProviderAssetMarket.__table__.columns[
+                        column_name
+                    ].type.python_type
+                    is dt.datetime
+                    else pd.api.types.pandas_dtype(
+                        ProviderAssetMarket.__table__.columns[
+                            column_name
+                        ].type.python_type
+                    )
+                ),
+            )
+            for column_name in set(market_data.key_columns + market_data.columns)
+        }
+    )
+    for asset_pair in asset_pairs.to_dict(orient="records"):
+        try:
+            # Log the asset pair.
+            logger.info(f"Getting data for {asset_pair['pair_asset_code']}...")
+
+            # Request the market data for the asset pair.
+            await rate_limit(market_data.rate_limit_name, strict=True)
+            data_i = await market_data.get_market_data(
+                pair_asset_code=asset_pair["pair_asset_code"],
+                from_asset_code=asset_pair["from_asset_code"],
+                to_asset_code=asset_pair["to_asset_code"],
+                as_of_date=as_of_date,
+            )
+
+            # Check that the data has the required columns.
+            invalid_columns = set(data_i.columns).symmetric_difference(
+                set(market_data.columns + market_data.required_market_data_columns)
+            )
+            if invalid_columns:
+                raise ValueError(f"The data has invalid columns: {invalid_columns}")
+
+            # Check for from asset codes that are not in the provider asset map.
+            missing_from_asset_codes = (
+                data_i["from_asset_code"]
+                .loc[
+                    ~data_i["from_asset_code"].isin(provider_asset_map.keys())  # type: ignore
+                ]
+                .tolist()
+            )
+            if len(missing_from_asset_codes) > 0:
+                raise ValueError(
+                    f"The following from asset codes are not in the provider asset map: {missing_from_asset_codes}"
+                )
+
+            # Check for to asset codes that are not in the provider asset map.
+            missing_to_asset_codes = (
+                data_i["to_asset_code"]
+                .loc[
+                    ~data_i["to_asset_code"].isin(provider_asset_map.keys())  # type: ignore
+                ]
+                .tolist()
+            )
+            if len(missing_to_asset_codes) > 0:
+                raise ValueError(
+                    f"The following to asset codes are not in the provider asset map: {missing_to_asset_codes}"
+                )
+
+            # Match assets based on the asset_code column and the provider_asset table.
+            data_i["from_asset_id"] = data_i["from_asset_code"].apply(
+                lambda asset_code: provider_asset_map[asset_code]
+            )
+            data_i["to_asset_id"] = data_i["to_asset_code"].apply(
+                lambda asset_code: provider_asset_map[asset_code]
+            )
+
+            # Add the provider id column.
+            data_i["provider_id"] = market_data.get_provider().id
+
+            # Drop the asset_code column.
+            data_i = data_i.drop(columns=["from_asset_code", "to_asset_code"])
+
+            # Add the data to the existing data.
+            data = pd.concat([data, data_i])
+        except Exception as e:
+            logger.error(f"Error getting data for {asset_pair['pair_asset_code']}: {e}")
+            continue
 
     return data
 
 
 @flow()
 async def pull_provider_asset_market_data(as_of_date: Optional[dt.date] = None):
+    logger = get_run_logger()
+
     # If the as_of_date is not provided, set it to today.
     if as_of_date is None:
         as_of_date = dt.date.today()
@@ -123,8 +176,21 @@ async def pull_provider_asset_market_data(as_of_date: Optional[dt.date] = None):
 
     # Get the data for each provider asset market data instance.
     for instance in data_instances:
+        logger.info(
+            f"Getting data for the provider type {instance.__class__.__name__}..."
+        )
+
         # Get the data for the instance.
         data = await get_data(market_data=instance, as_of_date=as_of_date)
 
         # Save the data to the database.
         await set_data(ProviderAssetMarket.__tablename__, data, operation_type="upsert")
+
+
+if __name__ == "__main__":
+    pull_provider_asset_market_data_deployment = (
+        pull_provider_asset_market_data.to_deployment(
+            name="pull_provider_asset_market_data_debug",
+        )
+    )
+    serve(pull_provider_asset_market_data_deployment)  # type: ignore
