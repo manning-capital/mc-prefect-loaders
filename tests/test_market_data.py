@@ -255,12 +255,12 @@ async def test_pull_new_kraken_data_into_empty_database(fake_data: FakeData):
     }
     fake_data.market_data = {
         "XXBTZUSD": [
-            [int(dt.datetime.now().timestamp()), 100, 100, 100, 100, 100],
-            [int(dt.datetime.now().timestamp()), 100, 100, 100, 100, 100],
+            [int(dt.datetime.now().timestamp()), 100, 100, 100, 100, 100, 100, 100],
+            [int(dt.datetime.now().timestamp()), 100, 100, 100, 100, 100, 100, 100],
         ],
         "XETHZUSD": [
-            [int(dt.datetime.now().timestamp()), 100, 100, 100, 100, 100],
-            [int(dt.datetime.now().timestamp()), 100, 100, 100, 100, 100],
+            [int(dt.datetime.now().timestamp()), 100, 100, 100, 100, 100, 100, 100],
+            [int(dt.datetime.now().timestamp()), 100, 100, 100, 100, 100, 100, 100],
         ],
     }
 
@@ -347,12 +347,12 @@ async def test_pull_new_kraken_data_into_non_empty_database(fake_data: FakeData)
     }
     fake_data.market_data = {
         "XXBTZUSD": [
-            [int(use_time.timestamp()), 300.0, 300.0, 300.0, 300.0, 300.0],
-            [int(use_time.timestamp()), 300.0, 300.0, 300.0, 300.0, 300.0],
+            [int(use_time.timestamp()), 300.0, 300.0, 300.0, 300.0, 300.0, 300.0, 300.0],
+            [int(use_time.timestamp()), 300.0, 300.0, 300.0, 300.0, 300.0, 300.0, 300.0],
         ],
         "XETHZUSD": [
-            [int(use_time.timestamp()), 300.0, 300.0, 300.0, 300.0, 300.0],
-            [int(use_time.timestamp()), 300.0, 300.0, 300.0, 300.0, 300.0],
+            [int(use_time.timestamp()), 300.0, 300.0, 300.0, 300.0, 300.0, 300.0, 300.0],
+            [int(use_time.timestamp()), 300.0, 300.0, 300.0, 300.0, 300.0, 300.0, 300.0],
         ],
     }
 
@@ -452,8 +452,8 @@ async def test_pull_new_kraken_data_into_empty_database_with_pair_that_does_not_
     }
     fake_data.market_data = {
         "1INCHUSD": [
-            [int(use_time.timestamp()), 100.0, 100.0, 100.0, 100.0, 100.0],
-            [int(use_time.timestamp()), 100.0, 100.0, 100.0, 100.0, 100.0],
+            [int(use_time.timestamp()), 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0],
+            [int(use_time.timestamp()), 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0],
         ],
     }
 

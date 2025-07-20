@@ -97,13 +97,13 @@ class KrakenProviderAssetMarketData(AbstractProviderAssetMarketData):
         response_data = await self.request_market_data(pair_asset_code=pair_asset_code)
         result: dict[str, list[list[Any]]] = response_data["result"]
 
-        # Get the OHLCV data.
+        # Get the OHLCV data. Will be of the form: [int <time>, string <open>, string <high>, string <low>, string <close>, string <vwap>, string <volume>, int <count>]
         raw_data: list[list[Any]] = result[pair_asset_code]
 
         # Convert the result to a dataframe.
         data = pd.DataFrame(
             raw_data,
-            columns=pd.Index(["timestamp", "open", "high", "low", "close", "volume"]),
+            columns=pd.Index(["timestamp", "open", "high", "low", "close", "vwap", "volume", "count"]),
         )
 
         # Ensure the data has the correct types.
@@ -115,6 +115,9 @@ class KrakenProviderAssetMarketData(AbstractProviderAssetMarketData):
         data["low"] = data["low"].astype(float)
         data["close"] = data["close"].astype(float)
         data["volume"] = data["volume"].astype(float)
+
+        # Drop the vwap and count columns.
+        data = data.drop(columns=["vwap", "count"])
 
         # Return the data.
         return data
