@@ -107,6 +107,13 @@ def create_base_data(engine: Engine):
                 asset_type_id=fiat_asset_type_id,
             )
         )
+        session.add(
+            Asset(
+                name="1INCH",
+                description="1INCH",
+                asset_type_id=crypto_asset_type_id,
+            )
+        )
         session.commit()
 
         # Get the ids for the assets.
@@ -116,6 +123,8 @@ def create_base_data(engine: Engine):
         eth_asset_id = session.execute(eth_asset_id_stmt).scalar_one()
         usd_asset_id_stmt = select(Asset.id).where(Asset.name == "USD")
         usd_asset_id = session.execute(usd_asset_id_stmt).scalar_one()
+        one_inch_asset_id_stmt = select(Asset.id).where(Asset.name == "1INCH")
+        one_inch_asset_id = session.execute(one_inch_asset_id_stmt).scalar_one()
 
         # Add the provider asset data.
         session.add(
@@ -145,6 +154,15 @@ def create_base_data(engine: Engine):
                 is_active=True,
             )
         )
+        session.add(
+            ProviderAsset(
+                date=(dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=1)).date(),
+                provider_id=kraken_provider_id,
+                asset_id=one_inch_asset_id,
+                asset_code="1INCH",
+                is_active=True,
+            )
+        )
         session.commit()
 
         return (
@@ -155,6 +173,7 @@ def create_base_data(engine: Engine):
             btc_asset_id,
             eth_asset_id,
             usd_asset_id,
+            one_inch_asset_id,
         )
 
 
@@ -209,7 +228,16 @@ async def test_pull_new_kraken_data_into_empty_database(fake_data: FakeData):
     clear_database(engine)
 
     # Create the base data.
-    create_base_data(engine)
+    (
+        _,
+        _,
+        _,
+        _,
+        btc_asset_id,
+        eth_asset_id,
+        usd_asset_id,
+        _,
+    ) = create_base_data(engine)
 
     # Reset the fake data.
     fake_data.reset_data()
@@ -250,6 +278,34 @@ async def test_pull_new_kraken_data_into_empty_database(fake_data: FakeData):
         # Check the data.
         assert len(provider_asset_market_data) == len(fake_data.market_data)
 
+        # Check the BTC to USD data.
+        btc_to_usd_data = session.execute(
+            select(ProviderAssetMarket).where(
+                ProviderAssetMarket.from_asset_id == btc_asset_id,
+                ProviderAssetMarket.to_asset_id == usd_asset_id,
+            )
+        ).scalar_one_or_none()
+        assert btc_to_usd_data is not None
+        assert btc_to_usd_data.open == 100.0
+        assert btc_to_usd_data.high == 100.0
+        assert btc_to_usd_data.low == 100.0
+        assert btc_to_usd_data.close == 100.0
+        assert btc_to_usd_data.volume == 100.0
+
+        # Check the ETH to USD data.
+        eth_to_usd_data = session.execute(
+            select(ProviderAssetMarket).where(
+                ProviderAssetMarket.from_asset_id == eth_asset_id,
+                ProviderAssetMarket.to_asset_id == usd_asset_id,
+            )
+        ).scalar_one_or_none()
+        assert eth_to_usd_data is not None
+        assert eth_to_usd_data.open == 100.0
+        assert eth_to_usd_data.high == 100.0
+        assert eth_to_usd_data.low == 100.0
+        assert eth_to_usd_data.close == 100.0
+        assert eth_to_usd_data.volume == 100.0
+
 
 @pytest.mark.asyncio
 async def test_pull_new_kraken_data_into_non_empty_database(fake_data: FakeData):
@@ -261,13 +317,14 @@ async def test_pull_new_kraken_data_into_non_empty_database(fake_data: FakeData)
 
     # Create the base data.
     (
-        provider_type_id,
-        crypto_asset_type_id,
-        fiat_asset_type_id,
+        _,
+        _,
+        _,
         kraken_provider_id,
         btc_asset_id,
         eth_asset_id,
         usd_asset_id,
+        _,
     ) = create_base_data(engine)
 
     # Reset the fake data.
@@ -355,3 +412,73 @@ async def test_pull_new_kraken_data_into_non_empty_database(fake_data: FakeData)
         assert eth_to_usd_data.low == 300.0
         assert eth_to_usd_data.close == 300.0
         assert eth_to_usd_data.volume == 300.0
+
+
+@pytest.mark.asyncio
+async def test_pull_new_kraken_data_into_empty_database_with_pair_that_does_not_match_from_and_to_asset_combination(
+    fake_data: FakeData,
+):
+    # Get the engine.
+    engine = await get_engine()
+
+    # Clear the database.
+    clear_database(engine)
+
+    # Create the base data.
+    (
+        _,
+        _,
+        _,
+        _,
+        _,
+        _,
+        usd_asset_id,
+        one_inch_asset_id,
+    ) = create_base_data(engine)
+
+    # Reset the fake data.
+    fake_data.reset_data()
+
+    # Add the fake data.
+    use_time = dt.datetime.fromtimestamp(
+        int(dt.datetime.now(dt.timezone.utc).timestamp()),
+        tz=dt.timezone.utc,
+    )
+    fake_data.asset_pairs = {
+        "1INCHUSD": {
+            "base": "1INCH",
+            "quote": "ZUSD",
+        },
+    }
+    fake_data.market_data = {
+        "1INCHUSD": [
+            [int(use_time.timestamp()), 100.0, 100.0, 100.0, 100.0, 100.0],
+            [int(use_time.timestamp()), 100.0, 100.0, 100.0, 100.0, 100.0],
+        ],
+    }
+
+    # Pull the provider asset market data.
+    await pull_provider_asset_market_data()
+
+    # Check the data.
+    with Session(engine) as session:
+        # General checks.
+        provider_asset_market_data_stmt = select(ProviderAssetMarket)
+        provider_asset_market_data = (
+            session.execute(provider_asset_market_data_stmt).scalars().all()
+        )
+        assert len(provider_asset_market_data) == len(fake_data.market_data)
+
+        # Check the 1INCH to USD data.
+        one_inch_usd_data = session.execute(
+            select(ProviderAssetMarket).where(
+                ProviderAssetMarket.from_asset_id == one_inch_asset_id,
+                ProviderAssetMarket.to_asset_id == usd_asset_id,
+            )
+        ).scalar_one_or_none()
+        assert one_inch_usd_data is not None
+        assert one_inch_usd_data.open == 100.0
+        assert one_inch_usd_data.high == 100.0
+        assert one_inch_usd_data.low == 100.0
+        assert one_inch_usd_data.close == 100.0
+        assert one_inch_usd_data.volume == 100.0
