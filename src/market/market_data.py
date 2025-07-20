@@ -42,10 +42,9 @@ class KrakenProviderAssetMarketData(AbstractProviderAssetMarketData):
             raise Exception(f"Failed to request {url}: {response.json()['error']}")
 
         # Check the response for an error.
-        if "error" in response.json():
-            raise Exception(
-                f"The request to {url} returned an error: {response.json()['error']}"
-            )
+        error: list[str] = response.json().get("error", [])
+        if len(error) > 0:
+            raise Exception(f"The request to {url} the following errors: {error}")
 
         # Return the response.
         return response.json()
