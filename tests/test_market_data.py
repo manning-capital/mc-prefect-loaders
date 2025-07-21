@@ -281,8 +281,8 @@ async def test_pull_new_kraken_data_into_empty_database(fake_data: FakeData):
         # Check the BTC to USD data.
         btc_to_usd_data = session.execute(
             select(ProviderAssetMarket).where(
-                ProviderAssetMarket.from_asset_id == btc_asset_id,
-                ProviderAssetMarket.to_asset_id == usd_asset_id,
+                ProviderAssetMarket.from_asset_id == usd_asset_id,
+                ProviderAssetMarket.to_asset_id == btc_asset_id,
             )
         ).scalar_one_or_none()
         assert btc_to_usd_data is not None
@@ -295,8 +295,8 @@ async def test_pull_new_kraken_data_into_empty_database(fake_data: FakeData):
         # Check the ETH to USD data.
         eth_to_usd_data = session.execute(
             select(ProviderAssetMarket).where(
-                ProviderAssetMarket.from_asset_id == eth_asset_id,
-                ProviderAssetMarket.to_asset_id == usd_asset_id,
+                ProviderAssetMarket.from_asset_id == usd_asset_id,
+                ProviderAssetMarket.to_asset_id == eth_asset_id,
             )
         ).scalar_one_or_none()
         assert eth_to_usd_data is not None
@@ -347,12 +347,48 @@ async def test_pull_new_kraken_data_into_non_empty_database(fake_data: FakeData)
     }
     fake_data.market_data = {
         "XXBTZUSD": [
-            [int(use_time.timestamp()), 300.0, 300.0, 300.0, 300.0, 300.0, 300.0, 300.0],
-            [int(use_time.timestamp()), 300.0, 300.0, 300.0, 300.0, 300.0, 300.0, 300.0],
+            [
+                int(use_time.timestamp()),
+                300.0,
+                300.0,
+                300.0,
+                300.0,
+                300.0,
+                300.0,
+                300.0,
+            ],
+            [
+                int(use_time.timestamp()),
+                300.0,
+                300.0,
+                300.0,
+                300.0,
+                300.0,
+                300.0,
+                300.0,
+            ],
         ],
         "XETHZUSD": [
-            [int(use_time.timestamp()), 300.0, 300.0, 300.0, 300.0, 300.0, 300.0, 300.0],
-            [int(use_time.timestamp()), 300.0, 300.0, 300.0, 300.0, 300.0, 300.0, 300.0],
+            [
+                int(use_time.timestamp()),
+                300.0,
+                300.0,
+                300.0,
+                300.0,
+                300.0,
+                300.0,
+                300.0,
+            ],
+            [
+                int(use_time.timestamp()),
+                300.0,
+                300.0,
+                300.0,
+                300.0,
+                300.0,
+                300.0,
+                300.0,
+            ],
         ],
     }
 
@@ -360,8 +396,8 @@ async def test_pull_new_kraken_data_into_non_empty_database(fake_data: FakeData)
     with Session(engine) as session:
         existing_provider_asset_market = ProviderAssetMarket(
             provider_id=kraken_provider_id,
-            from_asset_id=btc_asset_id,
-            to_asset_id=usd_asset_id,
+            from_asset_id=usd_asset_id,
+            to_asset_id=btc_asset_id,
             timestamp=use_time,
             open=200.0,
             high=200.0,
@@ -388,8 +424,8 @@ async def test_pull_new_kraken_data_into_non_empty_database(fake_data: FakeData)
         # Check the BTC to USD data.
         btc_to_usd_data = session.execute(
             select(ProviderAssetMarket).where(
-                ProviderAssetMarket.from_asset_id == btc_asset_id,
-                ProviderAssetMarket.to_asset_id == usd_asset_id,
+                ProviderAssetMarket.from_asset_id == usd_asset_id,
+                ProviderAssetMarket.to_asset_id == btc_asset_id,
             )
         ).scalar_one_or_none()
         assert btc_to_usd_data is not None
@@ -402,8 +438,8 @@ async def test_pull_new_kraken_data_into_non_empty_database(fake_data: FakeData)
         # Check the ETH to USD data.
         eth_to_usd_data = session.execute(
             select(ProviderAssetMarket).where(
-                ProviderAssetMarket.from_asset_id == eth_asset_id,
-                ProviderAssetMarket.to_asset_id == usd_asset_id,
+                ProviderAssetMarket.from_asset_id == usd_asset_id,
+                ProviderAssetMarket.to_asset_id == eth_asset_id,
             )
         ).scalar_one_or_none()
         assert eth_to_usd_data is not None
@@ -452,8 +488,26 @@ async def test_pull_new_kraken_data_into_empty_database_with_pair_that_does_not_
     }
     fake_data.market_data = {
         "1INCHUSD": [
-            [int(use_time.timestamp()), 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0],
-            [int(use_time.timestamp()), 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0],
+            [
+                int(use_time.timestamp()),
+                100.0,
+                100.0,
+                100.0,
+                100.0,
+                100.0,
+                100.0,
+                100.0,
+            ],
+            [
+                int(use_time.timestamp()),
+                100.0,
+                100.0,
+                100.0,
+                100.0,
+                100.0,
+                100.0,
+                100.0,
+            ],
         ],
     }
 
@@ -472,8 +526,8 @@ async def test_pull_new_kraken_data_into_empty_database_with_pair_that_does_not_
         # Check the 1INCH to USD data.
         one_inch_usd_data = session.execute(
             select(ProviderAssetMarket).where(
-                ProviderAssetMarket.from_asset_id == one_inch_asset_id,
-                ProviderAssetMarket.to_asset_id == usd_asset_id,
+                ProviderAssetMarket.from_asset_id == usd_asset_id,
+                ProviderAssetMarket.to_asset_id == one_inch_asset_id,
             )
         ).scalar_one_or_none()
         assert one_inch_usd_data is not None

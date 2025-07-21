@@ -9,7 +9,6 @@ from typing import Optional
 
 
 class AbstractProviderAssetMarketData(ABC):
-
     @property
     def key_columns(self):
         return ["timestamp", "from_asset_id", "to_asset_id"]

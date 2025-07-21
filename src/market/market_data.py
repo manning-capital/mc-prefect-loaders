@@ -65,8 +65,8 @@ class KrakenProviderAssetMarketData(AbstractProviderAssetMarketData):
             [
                 {
                     "pair_asset_code": asset_pair,
-                    "from_asset_code": asset_data["base"],
-                    "to_asset_code": asset_data["quote"],
+                    "from_asset_code": asset_data["quote"],
+                    "to_asset_code": asset_data["base"],
                 }
                 for asset_pair, asset_data in result.items()
             ]
@@ -103,7 +103,9 @@ class KrakenProviderAssetMarketData(AbstractProviderAssetMarketData):
         # Convert the result to a dataframe.
         data = pd.DataFrame(
             raw_data,
-            columns=pd.Index(["timestamp", "open", "high", "low", "close", "vwap", "volume", "count"]),
+            columns=pd.Index(
+                ["timestamp", "open", "high", "low", "close", "vwap", "volume", "count"]
+            ),
         )
 
         # Ensure the data has the correct types.
