@@ -41,7 +41,7 @@ if __name__ == "__main__":
             limit=1, collision_strategy=ConcurrencyLimitStrategy.CANCEL_NEW
         ),
         schedule=Interval(
-            dt.timedelta(minutes=5), anchor_date=dt.datetime(2000, 1, 1, 0, 0, 0)
+            dt.timedelta(minutes=30), anchor_date=dt.datetime(2000, 1, 1, 0, 0, 0)
         ),
         build=False,
         push=False,
