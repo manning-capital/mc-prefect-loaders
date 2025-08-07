@@ -34,6 +34,9 @@ class KrakenProviderAssetMarketData(AbstractProviderAssetMarketData):
         params: Optional[dict[str, Any]] = None,
         json: Optional[dict[str, Any]] = None,
     ) -> dict[str, Any]:
+        """
+        Make a request to Kraken.
+        """
         # Make the request.
         response = requests.request(method=method, url=url, params=params, json=json)
 
