@@ -1,7 +1,7 @@
 FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
 
-# Install Git for version control.
-RUN apt-get update && apt-get install -y git
+# Set working directory
+WORKDIR /app
 
 # Enable bytecode compilation
 ENV UV_COMPILE_BYTECODE=1
@@ -21,4 +21,4 @@ COPY . .
 RUN uv sync --locked --no-dev
 
 # Place executables in the environment at the front of the path
-ENV PATH="/.venv/bin:$PATH"
+ENV PATH="/app/.venv/bin:$PATH"

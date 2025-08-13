@@ -8,7 +8,7 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
   GITHUB_BRANCH: ${{ github.ref_name }}
-  PREFECT_API_URL: https://prefect.manningcapital.co.uk/api
+  PREFECT_API_URL: http://prefect-server.prefect.svc.cluster.local:4200/api
   PREFECT_GITHUB_CREDENTIALS: ${{ secrets.PREFECT_GITHUB_CREDENTIALS }}
   POSTGRES_URL: ${{ secrets.POSTGRES_URL }}
 
@@ -67,27 +67,22 @@ jobs:
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
 
-      # Run the variables python script to set the environment variables for the Prefect API URL and GitHub branch.
-      - name: Set variables for Prefect API URL and GitHub branch
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+      
+      - name: Save Digital Ocean kubeconfig
+        run: doctl kubernetes cluster kubeconfig save ${{ secrets.PREFECT_CLUSTER_NAME }}
+      
+      - name: Deploy to Digital Ocean cluster
         run: |
-          uv run data/variables_base.py
-        env:
-          PREFECT_API_URL: ${{ env.PREFECT_API_URL }}
-          GITHUB_BRANCH: ${{ env.GITHUB_BRANCH }}
-
-      # Run the secrets python script to set the environment variables for the Prefect API key and GitHub token.
-      - name: Set secrets for Prefect API key and GitHub token
-        run: |
-          uv run data/secrets_base.py
-        env:
-          PREFECT_API_URL: ${{ env.PREFECT_API_URL }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PREFECT_GITHUB_CREDENTIALS: ${{ secrets.PREFECT_GITHUB_CREDENTIALS }}
-          POSTGRES_URL: ${{ secrets.POSTGRES_URL }}
-
-      # Find all python files in the src folder that end in "*_deploy.py" and run in the uv environment.
-      - name: Deploy Prefect flows
-        run: find src -type f -name "*_deploy.py" -exec uv run {} \;
-        env:
-          PREFECT_API_URL: ${{ env.PREFECT_API_URL }}
-          GITHUB_BRANCH: ${{ env.GITHUB_BRANCH }}
+          cd charts/deploy-prefect
+          helm upgrade --install deploy-prefect . --namespace prefect \
+            --set image.repository=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }} \
+            --set image.tag=${{ env.GITHUB_BRANCH }} \
+            --set config.githubBranch=${{ env.GITHUB_BRANCH }} \
+            --set config.prefectApiUrl=${{ env.PREFECT_API_URL }} \
+            --set env.GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }} \
+            --set env.PREFECT_GITHUB_CREDENTIALS=${{ secrets.PREFECT_GITHUB_CREDENTIALS }} \
+            --set env.POSTGRES_URL=${{ secrets.POSTGRES_URL }}

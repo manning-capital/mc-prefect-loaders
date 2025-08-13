@@ -1,5 +1,8 @@
 FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
 
+# Set working directory
+WORKDIR /app
+
 # Install Git for version control.
 RUN apt-get update && apt-get install -y git
 
@@ -21,7 +24,7 @@ COPY . .
 RUN uv sync --locked --no-dev --group test
 
 # Place executables in the environment at the front of the path
-ENV PATH="/.venv/bin:$PATH"
+ENV PATH="/app/.venv/bin:$PATH"
 
 # Run the tests.
 CMD ["pytest", "tests"]

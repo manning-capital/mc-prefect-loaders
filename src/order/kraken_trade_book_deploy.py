@@ -13,23 +13,15 @@ from prefect.client.schemas.objects import (
     ConcurrencyLimitStrategy,
 )
 from prefect.docker import DockerImage
-from prefect.runner.storage import GitRepository
 from prefect.schedules import Interval, Schedule
-from prefect_github import GitHubCredentials
 
 from src.order.kraken_trade_book_flows import INTERVAL_SECONDS
 
 
 if __name__ == "__main__":
     branch = os.getenv("GITHUB_BRANCH", "main")
-    credentials = GitHubCredentials.load("github-credentials")  # type: ignore
-    source = GitRepository(
-        url="https://github.com/manning-capital/mc-prefect-loaders",
-        credentials=credentials,  # type: ignore
-        branch=branch,
-    )
     flow.from_source(
-        source=source,
+        source=".",
         entrypoint="src/order/kraken_trade_book_flows.py:pull_kraken_orders",
     ).deploy(  # type: ignore
         image=DockerImage(
@@ -51,7 +43,7 @@ if __name__ == "__main__":
         push=False,
     )
     flow.from_source(
-        source=source,
+        source=".",
         entrypoint="src/order/kraken_trade_book_flows.py:clear_orders",
     ).deploy(  # type: ignore
         image=DockerImage(
