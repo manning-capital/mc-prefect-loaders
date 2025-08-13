@@ -13,13 +13,21 @@ from prefect.client.schemas.objects import (
     ConcurrencyLimitStrategy,
 )
 from prefect.docker import DockerImage
+from prefect.runner.storage import GitRepository
 from prefect.schedules import Interval
+from prefect_github import GitHubCredentials
 
 
 if __name__ == "__main__":
     branch = os.getenv("GITHUB_BRANCH", "main")
+    credentials = GitHubCredentials.load("github-credentials")  # type: ignore
+    source = GitRepository(
+        url="https://github.com/manning-capital/mc-prefect-loaders",
+        credentials=credentials,  # type: ignore
+        branch=branch,
+    )
     flow.from_source(
-        source=".",
+        source=source,
         entrypoint="src/market/provider_asset_market_flows.py:pull_provider_asset_market_data",
     ).deploy(  # type: ignore
         image=DockerImage(
