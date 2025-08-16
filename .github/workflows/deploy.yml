@@ -75,14 +75,18 @@ jobs:
       - name: Save Digital Ocean kubeconfig
         run: doctl kubernetes cluster kubeconfig save ${{ secrets.PREFECT_CLUSTER_NAME }}
       
+      - name: Add Helm repository
+        run: |
+          helm repo add mc-helm https://raw.githubusercontent.com/manning-capital/mc-helm/main/
+          helm repo update
+      
       - name: Deploy to Digital Ocean cluster
         run: |
-          cd charts/deploy-prefect
-          helm upgrade --install deploy-prefect . --namespace prefect \
+          helm upgrade --install deploy-prefect mc-helm/deploy-prefect --namespace prefect \
             --set image.repository=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }} \
             --set image.tag=${{ env.GITHUB_BRANCH }} \
-            --set config.githubBranch=${{ env.GITHUB_BRANCH }} \
             --set config.prefectApiUrl=${{ env.PREFECT_API_URL }} \
+            --set env.GITHUB_BRANCH=${{ env.GITHUB_BRANCH }} \
             --set env.GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }} \
             --set env.PREFECT_GITHUB_CREDENTIALS=${{ secrets.PREFECT_GITHUB_CREDENTIALS }} \
             --set env.POSTGRES_URL=${{ secrets.POSTGRES_URL }}
