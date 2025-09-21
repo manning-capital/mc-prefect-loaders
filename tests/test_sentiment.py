@@ -4,20 +4,22 @@ import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), os.pardir))
 
 import datetime as dt
+
 import pytest
 from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session
 from mc_postgres_db.models import (
     Provider,
-    ProviderContent,
-    ProviderType,
     ContentType,
+    ProviderType,
     SentimentType,
+    ProviderContent,
     ProviderContentSentiment,
 )
-from src.content.sentiment.content_sentiment_flows import refresh_content_sentiment
-from mc_postgres_db.prefect.asyncio.tasks import get_engine
 from mc_postgres_db.testing.utilities import clear_database
+from mc_postgres_db.prefect.asyncio.tasks import get_engine
+
+from src.content.sentiment.content_sentiment_flows import refresh_content_sentiment
 
 
 async def create_base_data(

@@ -7,21 +7,22 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from datetime import datetime, timezone, timedelta
 from unittest.mock import patch
 
-import pytest
 import pandas as pd
+import pytest
 from prefect import task
 from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session
-from mc_postgres_db.testing.utilities import clear_database
 from mc_postgres_db.models import (
-    ProviderAssetOrder,
-    ProviderType,
-    Provider,
     Asset,
+    Provider,
     AssetType,
+    ProviderType,
     ProviderAsset,
+    ProviderAssetOrder,
 )
+from mc_postgres_db.testing.utilities import clear_database
 from mc_postgres_db.prefect.asyncio.tasks import get_engine as get_engine_async
+
 from src.order.kraken_trade_book_flows import pull_kraken_orders
 
 

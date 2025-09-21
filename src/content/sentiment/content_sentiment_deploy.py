@@ -7,16 +7,16 @@ sys.path.append(
 )
 
 from prefect import flow
+from prefect.docker import DockerImage
+from prefect.events import DeploymentEventTrigger
+from prefect_github import GitHubCredentials
+from prefect.runner.storage import GitRepository
 from prefect.client.schemas.objects import (
     ConcurrencyLimitConfig,
     ConcurrencyLimitStrategy,
 )
-from prefect.docker import DockerImage
-from prefect.runner.storage import GitRepository
-from prefect.events import DeploymentEventTrigger
-from prefect_github import GitHubCredentials
-from src.content.coin_desk_content_flows import pull_coindesk_news_content
 
+from src.content.coin_desk_content_flows import pull_coindesk_news_content
 
 if __name__ == "__main__":
     branch = os.getenv("GITHUB_BRANCH", "main")

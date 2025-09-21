@@ -3,16 +3,18 @@ import sys
 
 sys.path.append(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir))
 
-from prefect import flow, task, serve, get_run_logger
-from src.market.market_data import KrakenProviderAssetMarketData
-from src.market.abstract import AbstractProviderAssetMarketData
-from mc_postgres_db.prefect.asyncio.tasks import get_engine, set_data
-from prefect.cache_policies import NO_CACHE
-from typing import Optional
 import datetime as dt
+from typing import Optional
+
 import pandas as pd
-from prefect.concurrency.asyncio import rate_limit
+from prefect import flow, task, serve, get_run_logger
 from mc_postgres_db.models import ProviderAssetMarket
+from prefect.cache_policies import NO_CACHE
+from prefect.concurrency.asyncio import rate_limit
+from mc_postgres_db.prefect.asyncio.tasks import set_data, get_engine
+
+from src.market.abstract import AbstractProviderAssetMarketData
+from src.market.market_data import KrakenProviderAssetMarketData
 
 
 @task(cache_policy=NO_CACHE)

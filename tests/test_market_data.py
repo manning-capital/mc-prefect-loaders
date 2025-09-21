@@ -1,27 +1,29 @@
 import os
 import sys
-import pytest
 import datetime as dt
 from typing import Any
 from unittest.mock import patch
+
+import pytest
 from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session
 from mc_postgres_db.models import (
-    ProviderType,
+    Asset,
     Provider,
     AssetType,
-    Asset,
+    ProviderType,
     ProviderAsset,
     ProviderAssetMarket,
 )
 
 sys.path.append(os.path.join(os.path.dirname(__file__), os.pardir))
 
-from src.market.provider_asset_market_flows import pull_provider_asset_market_data
-from src.market.market_data import KrakenProviderAssetMarketData
-from data.variables_base import create_global_concurrency_limit
-from mc_postgres_db.prefect.asyncio.tasks import get_engine
 from mc_postgres_db.testing.utilities import clear_database
+from mc_postgres_db.prefect.asyncio.tasks import get_engine
+
+from data.variables_base import create_global_concurrency_limit
+from src.market.market_data import KrakenProviderAssetMarketData
+from src.market.provider_asset_market_flows import pull_provider_asset_market_data
 
 
 def create_base_data(engine: Engine):

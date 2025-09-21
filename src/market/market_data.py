@@ -3,14 +3,16 @@ import sys
 
 sys.path.append(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir))
 
-from src.market.abstract import AbstractProviderAssetMarketData
-from sqlalchemy.orm import Session
-from sqlalchemy import select
-from mc_postgres_db.models import Provider
-import pandas as pd
-from typing import Optional, Any
 import datetime as dt
+from typing import Any, Optional
+
+import pandas as pd
 import requests
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+from mc_postgres_db.models import Provider
+
+from src.market.abstract import AbstractProviderAssetMarketData
 
 
 class KrakenProviderAssetMarketData(AbstractProviderAssetMarketData):

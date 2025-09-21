@@ -1,20 +1,22 @@
 import os
 import sys
-import datetime as dt
 import time
+import datetime as dt
 
 sys.path.append(os.path.join(os.path.dirname(__file__), os.pardir))
 
-import pytest
-import pandas as pd
 from unittest.mock import patch
-from sqlalchemy.engine import Engine
-from sqlalchemy.orm import Session
-from sqlalchemy import select
+
+import pandas as pd
+import pytest
 from prefect import task
-from mc_postgres_db.models import ProviderType, ContentType, Provider, ProviderContent
-from mc_postgres_db.prefect.asyncio.tasks import get_engine
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+from sqlalchemy.engine import Engine
+from mc_postgres_db.models import Provider, ContentType, ProviderType, ProviderContent
 from mc_postgres_db.testing.utilities import clear_database
+from mc_postgres_db.prefect.asyncio.tasks import get_engine
+
 from src.content.coin_desk_content_flows import pull_coindesk_news_content
 
 

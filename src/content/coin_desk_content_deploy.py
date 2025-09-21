@@ -8,15 +8,14 @@ sys.path.append(
 )
 
 from prefect import flow
+from prefect.docker import DockerImage
+from prefect_github import GitHubCredentials
+from prefect.schedules import Interval
+from prefect.runner.storage import GitRepository
 from prefect.client.schemas.objects import (
     ConcurrencyLimitConfig,
     ConcurrencyLimitStrategy,
 )
-from prefect.docker import DockerImage
-from prefect.runner.storage import GitRepository
-from prefect.schedules import Interval
-from prefect_github import GitHubCredentials
-
 
 if __name__ == "__main__":
     branch = os.getenv("GITHUB_BRANCH", "main")

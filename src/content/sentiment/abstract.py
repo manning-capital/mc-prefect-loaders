@@ -1,8 +1,9 @@
 from abc import ABC, abstractmethod
-from mc_postgres_db.models import ContentType, ProviderContentSentiment, SentimentType
+
 import pandas as pd
 from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session
+from mc_postgres_db.models import ContentType, SentimentType, ProviderContentSentiment
 
 
 class AbstractContentSentimentType(ABC):
