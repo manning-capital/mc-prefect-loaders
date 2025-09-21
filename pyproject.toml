@@ -31,10 +31,10 @@ test = [
     "pytest-asyncio>=1.0.0",
 ]
 
-[tool.ruff]
+[tool.ruff.lint]
 select = ["I"]  # Enable import sorting
 
-[tool.ruff.isort]
+[tool.ruff.lint.isort]
 # Sort imports by line length (shortest first)
 length-sort = true
 length-sort-straight = true

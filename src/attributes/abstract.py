@@ -1,12 +1,11 @@
-import pandas as pd
 import datetime as dt
 from abc import ABC, abstractmethod
-import mc_postgres_db.models as models
-from sqlalchemy.engine import Engine
-from sqlalchemy.orm import Session
-from sqlalchemy.orm import joinedload
-from sqlalchemy import func, select, distinct
+
 import pandas as pd
+import mc_postgres_db.models as models
+from sqlalchemy import func, select, distinct
+from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.engine import Engine
 
 
 class AbstractAssetGroupType(ABC):
@@ -89,33 +88,52 @@ class AbstractAssetGroupType(ABC):
         )
 
         # Convert the market_df to a list of tuples.
-        desired_provider_asset_pairs = market_df.to_records(index=False).apply(set, axis=1).to_list()
+        desired_provider_asset_pairs = (
+            market_df.to_records(index=False).apply(set, axis=1).to_list()
+        )
 
         # Get all active provider asset groups of the given type with at least the minimum number of members, with members loaded and sorted by ProviderAssetGroupMember.order.
-        current_provider_asset_groups = self.get_provider_asset_groups()
-        current_provider_asset_pairs = [set(group.members) for group in current_provider_asset_groups]
+        current_provider_asset_groups = self.get_provider_asset_groups(is_active=True)
+        current_provider_asset_pairs = [
+            set(group.members) for group in current_provider_asset_groups
+        ]
 
         # Get the provider asset groups that are not in the current provider asset pairs.
-        new_provider_asset_groups = [group for group in desired_provider_asset_pairs if group not in current_provider_asset_pairs]
+        new_provider_asset_groups = [
+            group
+            for group in desired_provider_asset_pairs
+            if group not in current_provider_asset_pairs
+        ]
 
         # Get the provider asset groups that are in the current provider asset pairs.
-        updated_provider_asset_groups = [group for group in desired_provider_asset_pairs if group in current_provider_asset_pairs]
+        updated_provider_asset_groups = [
+            group
+            for group in desired_provider_asset_pairs
+            if group in current_provider_asset_pairs
+        ]
 
         # Create the new provider asset groups.
         with Session(self.engine) as session:
-            new_provider_asset_groups = [models.ProviderAssetGroup(asset_group_type_id=self.asset_group_type.id, is_active=True) for group in new_provider_asset_groups]
+            new_provider_asset_groups = [
+                models.ProviderAssetGroup(
+                    asset_group_type_id=self.asset_group_type.id, is_active=True
+                )
+                for group in new_provider_asset_groups
+            ]
             session.add_all(new_provider_asset_groups)
             session.commit()
 
         # Update the updated provider asset groups.
         with Session(self.engine) as session:
             for group in updated_provider_asset_groups:
-            group.is_active = True
+                group.is_active = True
         session.commit()
 
         return new_provider_asset_groups + updated_provider_asset_groups
 
-    def get_provider_asset_groups(self) -> list[models.ProviderAssetGroup]:
+    def get_provider_asset_groups(
+        self, is_active: bool = None
+    ) -> list[models.ProviderAssetGroup]:
         """
         Get all active provider asset groups of the given type with at least the minimum number of members, with members loaded and sorted by ProviderAssetGroupMember.order.
         """
@@ -140,7 +158,9 @@ class AbstractAssetGroupType(ABC):
                 .filter(
                     models.ProviderAssetGroup.asset_group_type_id
                     == self.asset_group_type.id,
-                    models.ProviderAssetGroup.is_active == True,
+                    models.ProviderAssetGroup.is_active == is_active
+                    if is_active is not None
+                    else True,
                     subq.c.member_count >= self.minimum_members,
                 )
                 .options(
