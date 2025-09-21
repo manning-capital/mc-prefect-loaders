@@ -88,29 +88,29 @@ class AbstractAssetGroupType(ABC):
         )
 
         # Convert the market_df to a list of tuples.
-        desired_provider_asset_pairs = (
-            market_df.to_records(index=False).apply(set, axis=1).to_list()
+        desired_provider_asset_pairs = set(
+            market_df.to_records(index=False).apply(tuple, axis=1).to_list()
         )
 
         # Get all active provider asset groups of the given type with at least the minimum number of members, with members loaded and sorted by ProviderAssetGroupMember.order.
-        current_provider_asset_groups = self.get_provider_asset_groups(is_active=True)
-        current_provider_asset_pairs = [
-            set(group.members) for group in current_provider_asset_groups
-        ]
+        current_provider_asset_groups = self.get_provider_asset_groups()
+        current_provider_asset_pairs = set([
+            (group.provider_id, member.from_asset_id, member.to_asset_id) for group in current_provider_asset_groups for member in group.members
+        ])
 
         # Get the provider asset groups that are not in the current provider asset pairs.
-        new_provider_asset_groups = [
+        new_provider_asset_groups = set([
             group
             for group in desired_provider_asset_pairs
             if group not in current_provider_asset_pairs
-        ]
+        ])
 
         # Get the provider asset groups that are in the current provider asset pairs.
-        updated_provider_asset_groups = [
+        updated_provider_asset_groups = set([
             group
             for group in desired_provider_asset_pairs
             if group in current_provider_asset_pairs
-        ]
+        ])
 
         # Create the new provider asset groups.
         with Session(self.engine) as session:
@@ -122,12 +122,6 @@ class AbstractAssetGroupType(ABC):
             ]
             session.add_all(new_provider_asset_groups)
             session.commit()
-
-        # Update the updated provider asset groups.
-        with Session(self.engine) as session:
-            for group in updated_provider_asset_groups:
-                group.is_active = True
-        session.commit()
 
         return new_provider_asset_groups + updated_provider_asset_groups
 
