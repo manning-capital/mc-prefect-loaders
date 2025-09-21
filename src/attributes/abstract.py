@@ -20,7 +20,15 @@ class AbstractAssetGroupType(ABC):
     @abstractmethod
     def minimum_members(self) -> int:
         """
-        Get the minimum number of members.
+        Get the minimum number of members required for the asset group type.
+        """
+        pass
+
+    @property
+    @abstractmethod
+    def maximum_members(self) -> int:
+        """
+        Get the maximum number of members for the asset group type.
         """
         pass
 
@@ -28,7 +36,7 @@ class AbstractAssetGroupType(ABC):
     @abstractmethod
     def providers(self) -> list[models.Provider]:
         """
-        Get the providers.
+        Get the providers for the asset group type.
         """
         pass
 
@@ -94,23 +102,31 @@ class AbstractAssetGroupType(ABC):
 
         # Get all active provider asset groups of the given type with at least the minimum number of members, with members loaded and sorted by ProviderAssetGroupMember.order.
         current_provider_asset_groups = self.get_provider_asset_groups()
-        current_provider_asset_pairs = set([
-            (group.provider_id, member.from_asset_id, member.to_asset_id) for group in current_provider_asset_groups for member in group.members
-        ])
+        current_provider_asset_pairs = set(
+            [
+                (group.provider_id, member.from_asset_id, member.to_asset_id)
+                for group in current_provider_asset_groups
+                for member in group.members
+            ]
+        )
 
         # Get the provider asset groups that are not in the current provider asset pairs.
-        new_provider_asset_groups = set([
-            group
-            for group in desired_provider_asset_pairs
-            if group not in current_provider_asset_pairs
-        ])
+        new_provider_asset_groups = set(
+            [
+                group
+                for group in desired_provider_asset_pairs
+                if group not in current_provider_asset_pairs
+            ]
+        )
 
         # Get the provider asset groups that are in the current provider asset pairs.
-        updated_provider_asset_groups = set([
-            group
-            for group in desired_provider_asset_pairs
-            if group in current_provider_asset_pairs
-        ])
+        updated_provider_asset_groups = set(
+            [
+                group
+                for group in desired_provider_asset_pairs
+                if group in current_provider_asset_pairs
+            ]
+        )
 
         # Create the new provider asset groups.
         with Session(self.engine) as session:
@@ -129,7 +145,7 @@ class AbstractAssetGroupType(ABC):
         self, is_active: bool = None
     ) -> list[models.ProviderAssetGroup]:
         """
-        Get all active provider asset groups of the given type with at least the minimum number of members, with members loaded and sorted by ProviderAssetGroupMember.order.
+        Get all active provider asset groups of the given type with at least the minimum number of members and at most the maximum number of members, with members loaded and sorted by ProviderAssetGroupMember.order.
         """
         with Session(self.engine) as session:
             # Subquery to count members per group
@@ -156,6 +172,7 @@ class AbstractAssetGroupType(ABC):
                     if is_active is not None
                     else True,
                     subq.c.member_count >= self.minimum_members,
+                    subq.c.member_count <= self.maximum_members,
                 )
                 .options(
                     joinedload(models.ProviderAssetGroup.members).joinedload(
