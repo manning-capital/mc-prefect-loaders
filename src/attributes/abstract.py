@@ -4,8 +4,8 @@ from abc import ABC, abstractmethod
 import pandas as pd
 import polars as pl
 import mc_postgres_db.models as models
-from sqlalchemy import func, select
-from sqlalchemy.orm import Session, joinedload, query
+from sqlalchemy import func
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.engine import Engine
 
 
@@ -91,103 +91,16 @@ class AbstractAssetGroupType(ABC):
         """
         return [provider.id for provider in self.providers]
 
-    def calculate_attributes(
-        self, start_date: dt.date, end_date: dt.date
-    ) -> pl.DataFrame:
-        """
-        Calculate the attributes for the provider asset market data dataframes.
-        Args:
-            start_date: The start date to get the provider asset market data from.
-            end_date: The end date to get the provider asset market data from.
-        Returns:
-            The dataframe with the attributes calculated for each provider asset market data dataframe.
-        """
-
-        # Get the current provider asset groups.
-        provider_asset_groups = self.get_current_provider_asset_groups()
-
-        # Generate a data from for all provider asset groups.
-        provider_asset_group_ids = [
-            provider_asset_group.id for provider_asset_group in provider_asset_groups
-        ]
-        provider_asset_group_members_df = pl.read_database(
-            select(models.ProviderAssetGroupMember).where(
-                models.ProviderAssetGroupMember.provider_asset_group_id.in_(
-                    provider_asset_group_ids
-                )
-            )
-        )
-
-        # Get the provider asset market data for each provider asset group.
-        key_columns: set[str] = {
-            models.ProviderAssetMarket.timestamp,
-            models.ProviderAssetMarket.provider_id,
-            models.ProviderAssetMarket.from_asset_id,
-            models.ProviderAssetMarket.to_asset_id,
-        }
-        query_columns: set[str] = key_columns.union(self.provider_asset_market_columns)
-        provider_asset_market_df: pl.DataFrame = pl.read_database(
-            select(*query_columns).where(
-                models.ProviderAssetMarket.provider_id.in_(
-                    provider_asset_group_members_df["provider_id"]
-                ),
-                models.ProviderAssetMarket.from_asset_id.in_(
-                    provider_asset_group_members_df["from_asset_id"]
-                ),
-                models.ProviderAssetMarket.to_asset_id.in_(
-                    provider_asset_group_members_df["to_asset_id"]
-                ),
-                models.ProviderAssetMarket.timestamp >= start_date - dt.timedelta(days=1), # Get an extra day so we can forward fill.
-                models.ProviderAssetMarket.timestamp <= end_date,
-            )
-        )
-
-        # Cross-join the provider asset market data with the provider asset group members.
-        provider_asset_market_df: pl.DataFrame = provider_asset_market_df.join(
-            provider_asset_group_members_df,
-            on=["provider_id", "from_asset_id", "to_asset_id"],
-            how="cross",
-        )
-
-        # Pivot the provider asset market data based on the order so that each provider asset group member is a column.
-        provider_asset_group_market_df: pl.DataFrame = provider_asset_market_df.pivot(
-            index="timestamp", columns="order", values=query_columns
-        )
-        pivotted_id_columns: list[str] = [ f"{key_column}_{i}" for i in range(1, self.group_size + 1) for key_column in key_columns ]
-
-        # Group by and forward fill the provider asset market data.
-        provider_asset_group_market_df: pl.DataFrame = provider_asset_group_market_df.group_by(pivotted_id_columns).agg(pl.col("*").sort_by("timestamp").forward_fill())
-        provider_asset_group_market_df = provider_asset_group_market_df.filter(pl.col("timestamp") >= start_date)
-        provider_asset_group_market_df = provider_asset_group_market_df.filter(pl.col("timestamp") <= end_date)
-        provider_asset_group_market_df = provider_asset_group_market_df.dropna()
-
-        # Calculate the attributes for the provider asset market data dataframes.
-        attribute_df = pl.DataFrame()
-        for window in self.windows:
-            provider_asset_group_market_df_grouped: pl.DataFrame = provider_asset_group_market_df.group_by(
-                pivotted_id_columns
-            )
-            # Group by the provider, from asset id, and to asset id pivotted of the number of items. We will then apply the calculation across each group.
-            attribute_df = attribute_df.vstack(
-                self.__calculate_attributes(
-                    window=window,
-                    step=self.step,
-                    *provider_asset_group_market_df_grouped,
-                    ),
-                )
-            )
-        return attribute_df
-
     @abstractmethod
-    def __calculated_group_attributes(
-        self, window: int, step: int, *provider_asset_group_data_dfs: list[pl.DataFrame]
+    def calculate_group_attributes(
+        self, window: int, step: int, group_market_df: pl.DataFrame
     ) -> pl.DataFrame:
         """
         Calculate the attributes for the provider asset group data dataframes.
         Args:
             window: The window size for the rolling window.
             step: The step size for the rolling window.
-            *provider_asset_group_data_dfs: The dataframes to calculate the attributes for.
+            group_market_df: The dataframe with the provider asset market data for the group.
         Returns:
             The dataframe with the attributes calculated for each provider asset group data dataframe.
         """
@@ -277,7 +190,9 @@ class AbstractAssetGroupType(ABC):
 
             return set(provider_asset_groups)
 
-    def sync_provider_asset_groups(self, start: dt.datetime, end: dt.datetime) -> None:
+    def refresh_provider_asset_groups(
+        self, start: dt.datetime, end: dt.datetime
+    ) -> None:
         """
         Sync the provider asset groups based on data from ProviderAssetMarket. Will get all combinations of provider and asset pairs in the given date range.
         Then, will compare these with the provider asset groups in the database. Will create new provider asset groups for any combinations that are not in the database.
