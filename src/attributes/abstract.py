@@ -5,7 +5,7 @@ import pandas as pd
 import polars as pl
 import mc_postgres_db.models as models
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, query
 from sqlalchemy.engine import Engine
 
 
@@ -119,13 +119,14 @@ class AbstractAssetGroupType(ABC):
         )
 
         # Get the provider asset market data for each provider asset group.
-        query_columns: set[str] = {
+        key_columns: set[str] = {
+            models.ProviderAssetMarket.timestamp,
             models.ProviderAssetMarket.provider_id,
             models.ProviderAssetMarket.from_asset_id,
             models.ProviderAssetMarket.to_asset_id,
         }
-        query_columns.update(self.provider_asset_market_columns)
-        provider_asset_market_df = pl.read_database(
+        query_columns: set[str] = key_columns.union(self.provider_asset_market_columns)
+        provider_asset_market_df: pl.DataFrame = pl.read_database(
             select(*query_columns).where(
                 models.ProviderAssetMarket.provider_id.in_(
                     provider_asset_group_members_df["provider_id"]
@@ -136,32 +137,42 @@ class AbstractAssetGroupType(ABC):
                 models.ProviderAssetMarket.to_asset_id.in_(
                     provider_asset_group_members_df["to_asset_id"]
                 ),
-                models.ProviderAssetMarket.timestamp >= start_date,
+                models.ProviderAssetMarket.timestamp >= start_date - dt.timedelta(days=1), # Get an extra day so we can forward fill.
                 models.ProviderAssetMarket.timestamp <= end_date,
             )
         )
 
         # Cross-join the provider asset market data with the provider asset group members.
-        provider_asset_market_df = provider_asset_market_df.join(
+        provider_asset_market_df: pl.DataFrame = provider_asset_market_df.join(
             provider_asset_group_members_df,
             on=["provider_id", "from_asset_id", "to_asset_id"],
+            how="cross",
         )
 
         # Pivot the provider asset market data based on the order so that each provider asset group member is a column.
-        provider_asset_group_market_df = provider_asset_market_df.pivot(
+        provider_asset_group_market_df: pl.DataFrame = provider_asset_market_df.pivot(
             index="timestamp", columns="order", values=query_columns
         )
+        pivotted_id_columns: list[str] = [ f"{key_column}_{i}" for i in range(1, self.group_size + 1) for key_column in key_columns ]
+
+        # Group by and forward fill the provider asset market data.
+        provider_asset_group_market_df: pl.DataFrame = provider_asset_group_market_df.group_by(pivotted_id_columns).agg(pl.col("*").sort_by("timestamp").forward_fill())
+        provider_asset_group_market_df = provider_asset_group_market_df.filter(pl.col("timestamp") >= start_date)
+        provider_asset_group_market_df = provider_asset_group_market_df.filter(pl.col("timestamp") <= end_date)
+        provider_asset_group_market_df = provider_asset_group_market_df.dropna()
 
         # Calculate the attributes for the provider asset market data dataframes.
         attribute_df = pl.DataFrame()
         for window in self.windows:
+            provider_asset_group_market_df_grouped: pl.DataFrame = provider_asset_group_market_df.group_by(
+                pivotted_id_columns
+            )
             # Group by the provider, from asset id, and to asset id pivotted of the number of items. We will then apply the calculation across each group.
             attribute_df = attribute_df.vstack(
                 self.__calculate_attributes(
                     window=window,
                     step=self.step,
-                    *provider_asset_group_market_df.group_by(
-                        ["provider_id", "from_asset_id", "to_asset_id"]
+                    *provider_asset_group_market_df_grouped,
                     ),
                 )
             )
