@@ -1,0 +1,114 @@
+import os
+import sys
+
+import pytest
+import mc_postgres_db.models as models
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+sys.path.append(os.path.join(os.path.dirname(__file__), os.pardir))
+
+from mc_postgres_db.testing.utilities import clear_database
+from mc_postgres_db.prefect.asyncio.tasks import get_engine
+
+from tests.utils import sample_asset_data, sample_provider_data
+
+
+@pytest.mark.asyncio
+async def test_creation_of_members_through_provider_asset_group_orm():
+    # Get the engine.
+    engine = await get_engine()
+
+    # Clear the database.
+    clear_database(engine)
+
+    # Create the provider and asset data.
+    _, kraken_provider = await sample_provider_data(engine)
+    (
+        _,
+        _,
+        btc_asset,
+        eth_asset,
+        usd_asset,
+    ) = await sample_asset_data(engine)
+
+    # Create the pairs trading asset group type.
+    with Session(engine) as session:
+        pairs_trading_asset_group_type = models.AssetGroupType(
+            symbol="STATISTICAL_PAIRS_TRADING",
+            name="Statistical Pairs Trading",
+            description="Group type for pairs trading attributes like the cointegration and hedge ratio.",
+            is_active=True,
+        )
+        session.add(pairs_trading_asset_group_type)
+        session.commit()
+        session.refresh(pairs_trading_asset_group_type)
+
+    # Create the provider asset group.
+    with Session(engine) as session:
+        provider_asset_group = models.ProviderAssetGroup(
+            asset_group_type_id=pairs_trading_asset_group_type.id,
+            name=f"{btc_asset.name}{usd_asset.name}-{eth_asset.name}{usd_asset.name}",
+            description=f"{btc_asset.name}-{usd_asset.name} and {eth_asset.name}-{usd_asset.name}",
+            is_active=True,
+            members=[
+                models.ProviderAssetGroupMember(
+                    provider_id=kraken_provider.id,
+                    from_asset_id=usd_asset.id,
+                    to_asset_id=btc_asset.id,
+                    order=1,
+                ),
+                models.ProviderAssetGroupMember(
+                    provider_id=kraken_provider.id,
+                    from_asset_id=usd_asset.id,
+                    to_asset_id=eth_asset.id,
+                    order=2,
+                ),
+            ],
+        )
+        session.add(provider_asset_group)
+        session.commit()
+
+    # Check if the provider asset group was created.
+    with Session(engine) as session:
+        provider_asset_group = session.execute(
+            select(models.ProviderAssetGroup).where(
+                models.ProviderAssetGroup.name
+                == f"{btc_asset.name}{usd_asset.name}-{eth_asset.name}{usd_asset.name}"
+            )
+        ).scalar_one()
+        assert provider_asset_group is not None
+        assert len(provider_asset_group.members) == 2
+        assert provider_asset_group.members[0].provider_id == kraken_provider.id
+        assert provider_asset_group.members[0].from_asset_id == usd_asset.id
+        assert provider_asset_group.members[0].to_asset_id == btc_asset.id
+        assert provider_asset_group.members[0].order == 1
+        assert provider_asset_group.members[1].provider_id == kraken_provider.id
+        assert provider_asset_group.members[1].from_asset_id == usd_asset.id
+        assert provider_asset_group.members[1].to_asset_id == eth_asset.id
+        assert provider_asset_group.members[1].order == 2
+
+    # Check if the provider asset group member was created.
+    with Session(engine) as session:
+        provider_asset_group_member_1 = session.execute(
+            select(models.ProviderAssetGroupMember).where(
+                models.ProviderAssetGroup.id == provider_asset_group.id,
+                models.ProviderAssetGroupMember.order == 1,
+            )
+        ).scalar_one()
+        provider_asset_group_member_2 = session.execute(
+            select(models.ProviderAssetGroupMember).where(
+                models.ProviderAssetGroup.id == provider_asset_group.id,
+                models.ProviderAssetGroupMember.order == 2,
+            )
+        ).scalar_one()
+        assert provider_asset_group_member_1 is not None
+        assert provider_asset_group_member_2 is not None
+        assert provider_asset_group_member_1.provider_id == kraken_provider.id
+        assert provider_asset_group_member_1.from_asset_id == usd_asset.id
+        assert provider_asset_group_member_1.to_asset_id == btc_asset.id
+        assert provider_asset_group_member_1.order == 1
+        assert provider_asset_group_member_2.provider_id == kraken_provider.id
+        assert provider_asset_group_member_2.from_asset_id == usd_asset.id
+        assert provider_asset_group_member_2.to_asset_id == eth_asset.id
+        assert provider_asset_group_member_2.order == 2

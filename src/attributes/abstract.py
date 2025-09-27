@@ -1,4 +1,5 @@
 import datetime as dt
+import itertools
 from abc import ABC, abstractmethod
 
 import pandas as pd
@@ -15,6 +16,14 @@ class AbstractAssetGroupType(ABC):
 
     def __init__(self, engine: Engine):
         self.engine = engine
+
+    @property
+    @abstractmethod
+    def maximum_provider_asset_market_pairs(self) -> int:
+        """
+        Get the maximum number of provider asset market pairs for the asset group type.
+        """
+        pass
 
     @property
     @abstractmethod
@@ -64,6 +73,101 @@ class AbstractAssetGroupType(ABC):
         """
         return [provider.id for provider in self.providers]
 
+    def get_current_provider_asset_group_members(
+        self,
+    ) -> set[models.ProviderAssetGroupMember]:
+        """
+        Get the old provider asset group members based on the provider asset groups in the database.
+        """
+        with Session(self.engine) as session:
+            # Get the provider asset group members in the database, eagerly loading their provider asset groups.
+            provider_asset_group_members = (
+                session.query(models.ProviderAssetGroupMember)
+                .filter(
+                    models.ProviderAssetGroup.asset_group_type_id
+                    == self.asset_group_type.id,
+                )
+                .join(
+                    models.ProviderAssetGroup,
+                    models.ProviderAssetGroupMember.provider_asset_group_id
+                    == models.ProviderAssetGroup.id,
+                )
+                .all()
+            )
+
+            return set(provider_asset_group_members)
+
+    @abstractmethod
+    def get_desired_provider_asset_group_members(
+        self, start_date: dt.date, end_date: dt.date
+    ) -> set[models.ProviderAssetGroupMember]:
+        """
+        Get the new provider asset group members based on the provider asset market data in the database.
+        """
+        with Session(self.engine) as session:
+            # Get the distinct provider asset market pairs in the given date range.
+            provider_asset_market_group_members = (
+                session.execute(
+                    select(
+                        distinct(
+                            models.ProviderAssetMarket.provider_id,
+                            models.ProviderAssetMarket.from_asset_id,
+                            models.ProviderAssetMarket.to_asset_id,
+                        )
+                    ).where(
+                        models.ProviderAssetMarket.provider_id.in_(self.provider_ids),
+                        models.ProviderAssetMarket.date >= start_date,
+                        models.ProviderAssetMarket.date <= end_date,
+                    ),
+                )
+                .scalars()
+                .all()
+            )
+
+            # Convert the provider asset market pairs to a list of tuples.
+            provider_asset_market_group_members = set(
+                (pair.provider_id, pair.from_asset_id, pair.to_asset_id)
+                for pair in provider_asset_market_group_members
+            )
+
+            # Limit the number of provider asset market pairs to the maximum number of provider asset market pairs.
+            if (
+                len(provider_asset_market_group_members)
+                > self.maximum_provider_asset_market_pairs
+            ):
+                provider_asset_market_group_members = (
+                    provider_asset_market_group_members[
+                        : self.maximum_provider_asset_market_pairs
+                    ]
+                )
+
+            # Convert the provider asset market group members to a list of tuples.
+            combinations = itertools.combinations(
+                provider_asset_market_group_members, 2
+            )
+
+            # g = ProviderAssetGroup(
+            #     asset_group_type_id=self.asset_group_type.id,
+            #     is_active=True,
+            #     members=[
+            #         models.ProviderAssetGroupMember(
+            #             provider_id=provider_asset_pair_1.provider_id,
+            #             from_asset_id=provider_asset_pair_1.from_asset_id,
+            #             to_asset_id=provider_asset_pair_1.to_asset_id,
+            #         )
+            #     ]
+            # )
+
+            # return set(
+            #     models.ProviderAssetGroupMember(
+            #         provider_id=provider_asset_pair_1.provider_id,
+            #         from_asset_id=provider_asset_pair_1.from_asset_id,
+            #         to_asset_id=to_asset_id,
+            #     )
+
+            #     for combination in combinations
+            # )
+
     def sync_provider_asset_groups(
         self, start: dt.datetime, end: dt.datetime
     ) -> list[models.ProviderAssetGroup]:
@@ -80,61 +184,38 @@ class AbstractAssetGroupType(ABC):
         """
 
         # Get all combinations of provider and asset pairs in the given date range.
-        market_df = pd.read_sql(
-            select(
-                distinct(
-                    models.ProviderAssetMarket.provider_id,
-                    models.ProviderAssetMarket.from_asset_id,
-                    models.ProviderAssetMarket.to_asset_id,
-                )
-            ).where(
-                models.ProviderAssetMarket.provider_id.in_(self.provider_ids),
-                models.ProviderAssetMarket.date >= start,
-                models.ProviderAssetMarket.date <= end,
-            ),
-            self.engine,
-        )
-
-        # Convert the market_df to a list of tuples.
-        desired_provider_asset_pairs = set(
-            market_df.to_records(index=False).apply(tuple, axis=1).to_list()
+        desired_provider_asset_group_members = (
+            self.get_desired_provider_asset_group_members(
+                start_date=start, end_date=end
+            )
         )
 
         # Get all active provider asset groups of the given type with at least the minimum number of members, with members loaded and sorted by ProviderAssetGroupMember.order.
-        current_provider_asset_groups = self.get_provider_asset_groups()
-        current_provider_asset_pairs = set(
-            [
-                (group.provider_id, member.from_asset_id, member.to_asset_id)
-                for group in current_provider_asset_groups
-                for member in group.members
-            ]
+        current_provider_asset_group_members = (
+            self.get_current_provider_asset_group_members()
         )
 
-        # Get the provider asset groups that are not in the current provider asset pairs.
-        new_provider_asset_groups = set(
-            [
-                group
-                for group in desired_provider_asset_pairs
-                if group not in current_provider_asset_pairs
-            ]
+        # Get the provider asset groups that are not in the current provider asset group members.
+        new_provider_asset_groups = (
+            desired_provider_asset_group_members - current_provider_asset_group_members
         )
 
         # Get the provider asset groups that are in the current provider asset pairs.
-        updated_provider_asset_groups = set(
-            [
-                group
-                for group in desired_provider_asset_pairs
-                if group in current_provider_asset_pairs
-            ]
+        updated_provider_asset_groups = (
+            desired_provider_asset_group_members & current_provider_asset_group_members
         )
 
         # Create the new provider asset groups.
         with Session(self.engine) as session:
             new_provider_asset_groups = [
                 models.ProviderAssetGroup(
-                    asset_group_type_id=self.asset_group_type.id, is_active=True
+                    asset_group_type_id=self.asset_group_type.id,
+                    is_active=True,
+                    provider_id=provider.id,
+                    from_asset_id=from_asset.id,
+                    to_asset_id=to_asset.id,
                 )
-                for group in new_provider_asset_groups
+                for provider, from_asset, to_asset in new_provider_asset_groups
             ]
             session.add_all(new_provider_asset_groups)
             session.commit()
