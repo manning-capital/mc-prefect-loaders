@@ -105,16 +105,18 @@ class StatisticalPairsTrading(AbstractAssetGroupType):
             # Get the distinct provider asset market pairs in the given date range.
             provider_asset_market_group_members = (
                 session.execute(
-                    select(
-                        distinct(
+                    distinct(
+                        select(
                             models.ProviderAssetMarket.provider_id,
                             models.ProviderAssetMarket.from_asset_id,
                             models.ProviderAssetMarket.to_asset_id,
+                        ).where(
+                            models.ProviderAssetMarket.provider_id.in_(
+                                self.provider_ids
+                            ),
+                            models.ProviderAssetMarket.timestamp >= start_date,
+                            models.ProviderAssetMarket.timestamp <= end_date,
                         )
-                    ).where(
-                        models.ProviderAssetMarket.provider_id.in_(self.provider_ids),
-                        models.ProviderAssetMarket.date >= start_date,
-                        models.ProviderAssetMarket.date <= end_date,
                     ),
                 )
                 .scalars()
