@@ -15,7 +15,7 @@ from src.attributes.asset_group_attributes import StatisticalPairsTrading
 
 
 @task(cache_policy=NO_CACHE)
-async def refresh_provider_asset_attribute_data_task(
+async def refresh_by_asset_group_type(
     asset_group_type: AbstractAssetGroupType, start: dt.datetime, end: dt.datetime
 ):
     """
@@ -28,13 +28,13 @@ async def refresh_provider_asset_attribute_data_task(
 
     # Refresh the provider asset groups.
     logger.info(
-        f"Refreshing provider asset groups for {asset_group_type.asset_group_type.name}..."
+        f"Refreshing the provider asset groups for {asset_group_type.asset_group_type.name}..."
     )
     asset_group_type.refresh_provider_asset_groups(start=start, end=end)
 
     # Get the current provider asset groups.
     logger.info(
-        f"Getting current provider asset groups for {asset_group_type.asset_group_type.name}..."
+        f"Getting the current provider asset groups for {asset_group_type.asset_group_type.name}..."
     )
     provider_asset_groups = asset_group_type.get_current_provider_asset_groups()
 
@@ -114,10 +114,10 @@ async def refresh_provider_asset_attribute_data_task(
     )
 
     # Calculate the attributes for the provider asset market data dataframes.
-    logger.info(
-        f"Calculating attributes for {asset_group_type.asset_group_type.name}..."
-    )
     for window in asset_group_type.windows:
+        logger.info(
+            f"Calculating attributes for {asset_group_type.asset_group_type.name} with window {window}..."
+        )
         with get_dask_client():
             attribute_results = provider_asset_group_market_df.group_by(
                 pivotted_id_columns
@@ -156,9 +156,11 @@ async def refresh_provider_asset_attribute_data(
     asset_group_types = [StatisticalPairsTrading(engine)]
 
     # Refresh the provider asset attribute data for each asset group type.
-    await refresh_provider_asset_attribute_data_task.map(
-        asset_group_types, start=start, end=end
-    )
+    for asset_group_type in asset_group_types:
+        logger.info(
+            f"Refreshing the provider asset attribute data for {asset_group_type.asset_group_type.name}..."
+        )
+        await refresh_by_asset_group_type(asset_group_type, start=start, end=end)
 
 
 if __name__ == "__main__":

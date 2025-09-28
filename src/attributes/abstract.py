@@ -1,7 +1,6 @@
 import datetime as dt
 from abc import ABC, abstractmethod
 
-import pandas as pd
 import polars as pl
 import mc_postgres_db.models as models
 from sqlalchemy import func
@@ -72,15 +71,6 @@ class AbstractAssetGroupType(ABC):
     def provider_asset_market_columns(self) -> set[str]:
         """
         Get the columns for the provider asset market data.
-        """
-        pass
-
-    @abstractmethod
-    def get_provider_asset_attribute_data(
-        self, start_date: dt.date, end_date: dt.date
-    ) -> pd.DataFrame:
-        """
-        Get the provider asset attribute data.
         """
         pass
 
