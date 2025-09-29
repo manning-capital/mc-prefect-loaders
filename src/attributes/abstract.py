@@ -96,42 +96,15 @@ class AbstractAssetGroupType(ABC):
         """
         pass
 
-    @abstractmethod
-    def get_symbol(
-        self, *provider_asset_group_members: list[models.ProviderAssetGroupMember]
-    ) -> str:
-        """
-        Get the desired provider asset group symbol.
-        """
-        pass
-
-    @abstractmethod
-    def get_name(
-        self, *provider_asset_group_members: list[models.ProviderAssetGroupMember]
-    ) -> str:
-        """
-        Get the desired provider asset group name.
-        """
-        pass
-
-    @abstractmethod
-    def get_description(
-        self, *provider_asset_group_members: list[models.ProviderAssetGroupMember]
-    ) -> str:
-        """
-        Get the desired provider asset group description.
-        """
-        pass
-
     def __convert_provider_asset_groups_to_tuples(
         self, provider_asset_groups: set[models.ProviderAssetGroup]
-    ) -> set[set[tuple[int, int, int]]]:
+    ) -> set[tuple[tuple[models.Provider, models.Asset, models.Asset], ...]]:
         """
         Convert the provider asset groups to a set of sets of tuples.
         """
         return {
-            set(
-                (member.provider_id, member.from_asset_id, member.to_asset_id)
+            tuple(
+                (member.provider, member.from_asset, member.to_asset)
                 for member in provider_asset_group.members
             )
             for provider_asset_group in provider_asset_groups
@@ -148,8 +121,8 @@ class AbstractAssetGroupType(ABC):
             # Subquery to count members per group.
             subq = (
                 session.query(
-                    models.ProviderAssetGroup.id.label("group_id"),
-                    func.count(models.ProviderAssetGroupMember.id).label(
+                    models.ProviderAssetGroup.id.label("provider_asset_group_id"),
+                    func.count(models.ProviderAssetGroupMember.order).label(
                         "member_count"
                     ),
                 )
@@ -167,7 +140,7 @@ class AbstractAssetGroupType(ABC):
                 session.query(models.ProviderAssetGroup)
                 .join(
                     subq,
-                    models.ProviderAssetGroup.id == subq.c.group_id,
+                    models.ProviderAssetGroup.id == subq.c.provider_asset_group_id,
                 )
                 .filter(
                     models.ProviderAssetGroup.asset_group_type_id
@@ -210,17 +183,17 @@ class AbstractAssetGroupType(ABC):
         current_provider_asset_groups = self.get_current_provider_asset_groups()
 
         # Convert the desired provider asset groups to a set of sets of tuples.
-        desired_provider_asset_tuples: set[set[tuple[int, int, int]]] = (
-            self.__convert_provider_asset_groups_to_tuples(
-                desired_provider_asset_groups
-            )
+        desired_provider_asset_tuples: set[
+            tuple[tuple[models.Provider, models.Asset, models.Asset], ...]
+        ] = self.__convert_provider_asset_groups_to_tuples(
+            desired_provider_asset_groups
         )
 
         # Convert the current provider asset groups to a set of sets of tuples.
-        current_provider_asset_tuples: set[set[tuple[int, int, int]]] = (
-            self.__convert_provider_asset_groups_to_tuples(
-                current_provider_asset_groups
-            )
+        current_provider_asset_tuples: set[
+            tuple[tuple[models.Provider, models.Asset, models.Asset], ...]
+        ] = self.__convert_provider_asset_groups_to_tuples(
+            current_provider_asset_groups
         )
 
         # Get the new provider asset groups.
@@ -233,21 +206,20 @@ class AbstractAssetGroupType(ABC):
             for provider_asset_tuple in new_provider_asset_tuples:
                 provider_asset_group_members = [
                     models.ProviderAssetGroupMember(
-                        provider_id=provider_id,
-                        from_asset_id=from_asset_id,
-                        to_asset_id=to_asset_id,
+                        provider_id=provider.id,
+                        from_asset_id=from_asset.id,
+                        to_asset_id=to_asset.id,
                         order=i + 1,
                     )
-                    for i, provider_id, from_asset_id, to_asset_id in enumerate(
+                    for i, provider, from_asset, to_asset in enumerate(
                         provider_asset_tuple
                     )
                 ]
                 session.add(
                     models.ProviderAssetGroup(
                         asset_group_type_id=self.asset_group_type.id,
-                        symbol=self.get_symbol(*provider_asset_group_members),
-                        name=self.get_name(*provider_asset_group_members),
-                        description=self.get_description(*provider_asset_group_members),
+                        name=self.asset_group_type.name,
+                        description=self.asset_group_type.description,
                         is_active=True,
                         members=provider_asset_group_members,
                     )

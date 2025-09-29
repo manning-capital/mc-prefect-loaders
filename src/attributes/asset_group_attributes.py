@@ -9,11 +9,12 @@ import itertools
 
 import numpy as np
 import polars as pl
+import statsmodels.api as sm
 import mc_postgres_db.models as models
-from sqlalchemy import select, distinct
-from sqlalchemy.orm import Session
+from sqlalchemy import select
+from sqlalchemy.orm import Session, aliased
 from sqlalchemy.engine import Engine
-from statsmodels.tsa.stattools import adfuller
+from statsmodels.tsa.stattools import coint
 from statsmodels.tsa.arima.model import ARIMA
 from statsmodels.regression.linear_model import OLS
 
@@ -45,47 +46,17 @@ class StatisticalPairsTrading(AbstractAssetGroupType):
                 ).scalars()
             )
 
-    def get_symbol(
-        self, *provider_asset_group_members: list[models.ProviderAssetGroupMember]
-    ) -> str:
-        return "-".join(
-            [
-                f"{member.to_asset_id}{member.from_asset_id}"
-                for member in provider_asset_group_members
-            ]
-        )
-
-    def get_name(
-        self, *provider_asset_group_members: list[models.ProviderAssetGroupMember]
-    ) -> str:
-        return "-".join(
-            [
-                f"{member.to_asset_id}{member.from_asset_id}"
-                for member in provider_asset_group_members
-            ]
-        )
-
-    def get_description(
-        self, *provider_asset_group_members: list[models.ProviderAssetGroupMember]
-    ) -> str:
-        return "-".join(
-            [
-                f"{member.to_asset_id}{member.from_asset_id}"
-                for member in provider_asset_group_members
-            ]
-        )
-
     @property
     def group_size(self) -> int:
         return 2
 
     @property
-    def windows(self) -> list[str]:
-        return ["1d", "2d", "3d"]
+    def windows(self) -> list[dt.timedelta]:
+        return [dt.timedelta(days=7), dt.timedelta(days=30), dt.timedelta(days=90)]
 
     @property
-    def step(self) -> str:
-        return "1d"
+    def step(self) -> dt.timedelta:
+        return dt.timedelta(hours=1)
 
     @property
     def maximum_provider_asset_market_pairs(self) -> int:
@@ -103,36 +74,42 @@ class StatisticalPairsTrading(AbstractAssetGroupType):
         """
         with Session(self.engine) as session:
             # Get the distinct provider asset market pairs in the given date range.
-            provider_asset_market_group_members = (
-                session.execute(
-                    distinct(
-                        select(
-                            models.ProviderAssetMarket.provider_id,
-                            models.ProviderAssetMarket.from_asset_id,
-                            models.ProviderAssetMarket.to_asset_id,
-                        ).where(
-                            models.ProviderAssetMarket.provider_id.in_(
-                                self.provider_ids
-                            ),
-                            models.ProviderAssetMarket.timestamp >= start_date,
-                            models.ProviderAssetMarket.timestamp <= end_date,
-                        )
-                    ),
-                )
-                .scalars()
-                .all()
-            )
-
-            # Convert the provider asset market pairs to a list of tuples.
+            provider = aliased(models.Provider)
+            from_asset = aliased(models.Asset)
+            to_asset = aliased(models.Asset)
             provider_asset_market_group_members = set(
-                (pair.provider_id, pair.from_asset_id, pair.to_asset_id)
-                for pair in provider_asset_market_group_members
+                session.execute(
+                    select(
+                        provider,
+                        from_asset,
+                        to_asset,
+                    )
+                    .where(
+                        models.ProviderAssetMarket.provider_id.in_(self.provider_ids),
+                        models.ProviderAssetMarket.timestamp >= start_date,
+                        models.ProviderAssetMarket.timestamp <= end_date,
+                    )
+                    .select_from(models.ProviderAssetMarket)
+                    .join(
+                        provider,
+                        models.ProviderAssetMarket.provider_id == provider.id,
+                    )
+                    .join(
+                        from_asset,
+                        models.ProviderAssetMarket.from_asset_id == from_asset.id,
+                    )
+                    .join(
+                        to_asset,
+                        models.ProviderAssetMarket.to_asset_id == to_asset.id,
+                    )
+                    .distinct()
+                ).tuples()
             )
 
             # Check the number of combinations. This number will overflow if it is greater than 135805301026.
             n_combinations: np.int64 = (
                 np.int64(math.comb(len(provider_asset_market_group_members), 2))
-                if len(provider_asset_market_group_members) >= 135805301026
+                if len(provider_asset_market_group_members) < 135805301026
                 else np.inf
             )
 
@@ -150,15 +127,16 @@ class StatisticalPairsTrading(AbstractAssetGroupType):
             return set(
                 models.ProviderAssetGroup(
                     asset_group_type_id=self.asset_group_type.id,
-                    symbol=self.get_symbol(*combination),
-                    name=self.get_name(*combination),
-                    description=self.get_description(*combination),
+                    name="-".join([f"{pair[2]}{pair[1]}" for pair in combination]),
+                    description="-".join(
+                        [f"{pair[2]}{pair[1]}" for pair in combination]
+                    ),
                     is_active=True,
                     members=[
                         models.ProviderAssetGroupMember(
-                            provider_id=pair.provider_id,
-                            from_asset_id=pair.from_asset_id,
-                            to_asset_id=pair.to_asset_id,
+                            provider_id=pair[0],
+                            from_asset_id=pair[1],
+                            to_asset_id=pair[2],
                             order=i + 1,
                         )
                         for i, pair in enumerate(combination)
@@ -168,7 +146,7 @@ class StatisticalPairsTrading(AbstractAssetGroupType):
             )
 
     def calculate_group_attributes(
-        self, window: int, step: int, group_market_df: pl.DataFrame
+        self, window: dt.timedelta, step: dt.timedelta, group_market_df: pl.DataFrame
     ) -> pl.DataFrame:
         """
         Calculate the attributes for the provider asset group data dataframe.
@@ -191,10 +169,14 @@ class StatisticalPairsTrading(AbstractAssetGroupType):
             # Get the window of data.
             group_market_df_window = group_market_df.slice(i, window)
 
+            # Get the close columns.
+            close_1 = group_market_df_window["close_1"].to_numpy()
+            close_2 = group_market_df_window["close_2"].to_numpy()
+
             # Perform a linear regression over the window of data.
-            linear_regression = OLS(
-                group_market_df_window["close"], group_market_df_window["timestamp"]
-            ).fit()
+            X = sm.add_constant(close_1)
+            y = close_2
+            linear_regression = OLS(y, X).fit()
 
             # Get the slope and intercept of the linear regression.
             timestamp[i] = group_market_df_window["timestamp"].max()
@@ -211,19 +193,28 @@ class StatisticalPairsTrading(AbstractAssetGroupType):
             # Calculate the adjusted R-squared of the linear regression.
             r_squared_adj[i] = linear_regression.rsquared_adj
 
-            # Run the adfuller test on the residuals.
-            adfuller_result = adfuller(residuals)
+            # Run the cointegration test.
+            p_value[i] = coint(close_1, close_2)[1]
 
-            # Get the p-value of the adfuller test.
-            p_value[i] = adfuller_result[1]
+            # Fit the residuals to the Ornstein-Uhlenbeck process using AR(1) model.
+            # The AR(1) process: X_t = phi * X_{t-1} + c + e_t
+            # OU process: dX_t = theta*(mu - X_t)dt + sigma*dW_t
+            # The mapping is: theta = -ln(phi), mu = c/(1-phi), sigma = std(residuals) * sqrt(2*theta/(1-phi**2))
+            arima = ARIMA(residuals, order=(1, 0, 0)).fit()
+            phi = arima.params.get("ar.L1", arima.params[1])  # AR(1) coefficient
+            c = arima.params.get("const", arima.params[0])  # Intercept
 
-            # Fit the residuals to the Ornstein-Uhlenbeck process.
-            ornstein_uhlenbeck = ARIMA(residuals, order=(1, 1, 0)).fit()
-
-            # Get the parameters of the Ornstein-Uhlenbeck process.
-            theta[i] = ornstein_uhlenbeck.params[0]
-            mu[i] = ornstein_uhlenbeck.params[1]
-            sigma[i] = ornstein_uhlenbeck.params[2]
+            # Ensure phi is less than 1 for stationarity
+            if abs(phi) < 1:
+                theta[i] = -np.log(phi)
+                mu[i] = c / (1 - phi)
+                # Estimate sigma of noise
+                sigma_e = np.sqrt(arima.sigma2)
+                sigma[i] = sigma_e * np.sqrt(2 * theta[i] / (1 - phi**2))
+            else:
+                theta[i] = np.nan
+                mu[i] = np.nan
+                sigma[i] = np.nan
 
         # Return the provider asset group data dataframe.
         return pl.DataFrame(

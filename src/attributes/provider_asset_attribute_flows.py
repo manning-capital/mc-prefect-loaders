@@ -121,7 +121,7 @@ async def refresh_by_asset_group_type(
         with get_dask_client():
             attribute_results = provider_asset_group_market_df.group_by(
                 pivotted_id_columns
-            ).map_partitions(
+            ).apply(
                 lambda df: asset_group_type.calculate_group_attributes(
                     window=window,
                     step=asset_group_type.step,
