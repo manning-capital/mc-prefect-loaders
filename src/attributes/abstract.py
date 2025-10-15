@@ -18,19 +18,19 @@ class AbstractAssetGroupType(ABC):
 
     @property
     @abstractmethod
-    def windows(self) -> list[str]:
+    def windows(self) -> list[dt.timedelta]:
         """
         Get the window sizes for the rolling window.
-        For example, ["1d", "2d", "3d"] for a 3 day rolling window.
+        For example, [dt.timedelta(days=1), dt.timedelta(days=2), dt.timedelta(days=3)] for a 3 day rolling window.
         """
         pass
 
     @property
     @abstractmethod
-    def step(self) -> str:
+    def step(self) -> dt.timedelta:
         """
         Get the step size for the rolling window.
-        For example, "1d" for a 1 day step size.
+        For example, dt.timedelta(days=1) for a 1 day step size.
         """
         pass
 
@@ -68,7 +68,7 @@ class AbstractAssetGroupType(ABC):
 
     @property
     @abstractmethod
-    def provider_asset_market_columns(self) -> set[str]:
+    def provider_asset_market_columns(self) -> set:
         """
         Get the columns for the provider asset market data.
         """
@@ -148,10 +148,49 @@ class AbstractAssetGroupType(ABC):
                     subq.c.member_count == self.group_size,
                 )
                 .options(joinedload(models.ProviderAssetGroup.members))
+                .options(
+                    joinedload(models.ProviderAssetGroup.members).joinedload(
+                        models.ProviderAssetGroupMember.provider
+                    )
+                )
+                .options(
+                    joinedload(models.ProviderAssetGroup.members).joinedload(
+                        models.ProviderAssetGroupMember.from_asset
+                    )
+                )
+                .options(
+                    joinedload(models.ProviderAssetGroup.members).joinedload(
+                        models.ProviderAssetGroupMember.to_asset
+                    )
+                )
                 .all()
             )
 
             return set(provider_asset_groups)
+
+    def get_desired_provider_asset_group_ids(
+        self, start_date: dt.date, end_date: dt.date
+    ) -> set[int]:
+        """
+        Get the desired provider asset group ids.
+        """
+        return {
+            provider_asset_group.id
+            for provider_asset_group in self.get_desired_provider_asset_groups(
+                start_date=start_date, end_date=end_date
+            )
+        }
+
+    def get_current_provider_asset_group_ids(
+        self,
+    ) -> set[int]:
+        """
+        Get the current provider asset group ids.
+        """
+        return {
+            provider_asset_group.id
+            for provider_asset_group in self.get_current_provider_asset_groups()
+        }
 
     def refresh_provider_asset_groups(
         self, start: dt.datetime, end: dt.datetime
@@ -206,12 +245,12 @@ class AbstractAssetGroupType(ABC):
             for provider_asset_tuple in new_provider_asset_tuples:
                 provider_asset_group_members = [
                     models.ProviderAssetGroupMember(
-                        provider_id=provider.id,
-                        from_asset_id=from_asset.id,
-                        to_asset_id=to_asset.id,
+                        provider_id=provider_asset_group_member_tuple[0].id,
+                        from_asset_id=provider_asset_group_member_tuple[1].id,
+                        to_asset_id=provider_asset_group_member_tuple[2].id,
                         order=i + 1,
                     )
-                    for i, provider, from_asset, to_asset in enumerate(
+                    for i, provider_asset_group_member_tuple in enumerate(
                         provider_asset_tuple
                     )
                 ]

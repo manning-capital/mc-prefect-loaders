@@ -63,8 +63,8 @@ class StatisticalPairsTrading(AbstractAssetGroupType):
         return 5000
 
     @property
-    def provider_asset_market_columns(self) -> set[str]:
-        return {"close"}
+    def provider_asset_market_columns(self) -> set:
+        return {models.ProviderAssetMarket.close}
 
     def get_desired_provider_asset_groups(
         self, start_date: dt.date, end_date: dt.date
@@ -127,16 +127,21 @@ class StatisticalPairsTrading(AbstractAssetGroupType):
             return set(
                 models.ProviderAssetGroup(
                     asset_group_type_id=self.asset_group_type.id,
-                    name="-".join([f"{pair[2]}{pair[1]}" for pair in combination]),
+                    name="-".join(
+                        [f"{pair[2].name}{pair[1].name}" for pair in combination]
+                    ),
                     description="-".join(
-                        [f"{pair[2]}{pair[1]}" for pair in combination]
+                        [f"{pair[2].name}{pair[1].name}" for pair in combination]
                     ),
                     is_active=True,
                     members=[
                         models.ProviderAssetGroupMember(
-                            provider_id=pair[0],
-                            from_asset_id=pair[1],
-                            to_asset_id=pair[2],
+                            provider_id=pair[0].id,
+                            provider=pair[0],
+                            from_asset_id=pair[1].id,
+                            from_asset=pair[1],
+                            to_asset_id=pair[2].id,
+                            to_asset=pair[2],
                             order=i + 1,
                         )
                         for i, pair in enumerate(combination)
