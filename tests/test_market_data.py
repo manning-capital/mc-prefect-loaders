@@ -255,14 +255,13 @@ async def test_pull_new_kraken_data_into_empty_database(fake_data: FakeData):
             "quote": "ZUSD",
         },
     }
+    use_time = dt.datetime.now()
     fake_data.market_data = {
         "XXBTZUSD": [
-            [int(dt.datetime.now().timestamp()), 100, 100, 100, 100, 100, 100, 100],
-            [int(dt.datetime.now().timestamp()), 100, 100, 100, 100, 100, 100, 100],
+            [int(use_time.timestamp()), 100, 100, 100, 100, 100, 100, 100],
         ],
         "XETHZUSD": [
-            [int(dt.datetime.now().timestamp()), 100, 100, 100, 100, 100, 100, 100],
-            [int(dt.datetime.now().timestamp()), 100, 100, 100, 100, 100, 100, 100],
+            [int(use_time.timestamp()), 100, 100, 100, 100, 100, 100, 100],
         ],
     }
 
@@ -278,7 +277,9 @@ async def test_pull_new_kraken_data_into_empty_database(fake_data: FakeData):
         )
 
         # Check the data.
-        assert len(provider_asset_market_data) == len(fake_data.market_data)
+        assert len(provider_asset_market_data) == sum(
+            len(data) for data in fake_data.market_data.values()
+        )
 
         # Check the BTC to USD data.
         btc_to_usd_data = session.execute(
@@ -333,10 +334,8 @@ async def test_pull_new_kraken_data_into_non_empty_database(fake_data: FakeData)
     fake_data.reset_data()
 
     # Add the fake data.
-    use_time = dt.datetime.fromtimestamp(
-        int(dt.datetime.now(dt.timezone.utc).timestamp()),
-        tz=dt.timezone.utc,
-    )
+    use_time = dt.datetime.now(dt.timezone.utc)
+    use_time = use_time.replace(microsecond=0)
     fake_data.asset_pairs = {
         "XXBTZUSD": {
             "base": "XXBT",
@@ -359,28 +358,8 @@ async def test_pull_new_kraken_data_into_non_empty_database(fake_data: FakeData)
                 300.0,
                 300.0,
             ],
-            [
-                int(use_time.timestamp()),
-                300.0,
-                300.0,
-                300.0,
-                300.0,
-                300.0,
-                300.0,
-                300.0,
-            ],
         ],
         "XETHZUSD": [
-            [
-                int(use_time.timestamp()),
-                300.0,
-                300.0,
-                300.0,
-                300.0,
-                300.0,
-                300.0,
-                300.0,
-            ],
             [
                 int(use_time.timestamp()),
                 300.0,
@@ -421,7 +400,9 @@ async def test_pull_new_kraken_data_into_non_empty_database(fake_data: FakeData)
         provider_asset_market_data = (
             session.execute(provider_asset_market_data_stmt).scalars().all()
         )
-        assert len(provider_asset_market_data) == len(fake_data.market_data)
+        assert len(provider_asset_market_data) == sum(
+            len(data) for data in fake_data.market_data.values()
+        )
 
         # Check the BTC to USD data.
         btc_to_usd_data = session.execute(
@@ -478,10 +459,8 @@ async def test_pull_new_kraken_data_into_empty_database_with_pair_that_does_not_
     fake_data.reset_data()
 
     # Add the fake data.
-    use_time = dt.datetime.fromtimestamp(
-        int(dt.datetime.now(dt.timezone.utc).timestamp()),
-        tz=dt.timezone.utc,
-    )
+    use_time = dt.datetime.now(dt.timezone.utc)
+    use_time = use_time.replace(microsecond=0)
     fake_data.asset_pairs = {
         "1INCHUSD": {
             "base": "1INCH",
@@ -490,16 +469,6 @@ async def test_pull_new_kraken_data_into_empty_database_with_pair_that_does_not_
     }
     fake_data.market_data = {
         "1INCHUSD": [
-            [
-                int(use_time.timestamp()),
-                100.0,
-                100.0,
-                100.0,
-                100.0,
-                100.0,
-                100.0,
-                100.0,
-            ],
             [
                 int(use_time.timestamp()),
                 100.0,
@@ -523,7 +492,9 @@ async def test_pull_new_kraken_data_into_empty_database_with_pair_that_does_not_
         provider_asset_market_data = (
             session.execute(provider_asset_market_data_stmt).scalars().all()
         )
-        assert len(provider_asset_market_data) == len(fake_data.market_data)
+        assert len(provider_asset_market_data) == sum(
+            len(data) for data in fake_data.market_data.values()
+        )
 
         # Check the 1INCH to USD data.
         one_inch_usd_data = session.execute(
