@@ -154,9 +154,13 @@ async def test_refresh_of_provider_asset_attribute_data():
     mu = 0.0001
     sigma = 0.01
     S_btc_to_usd = 10000
+    start_time = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=1)).replace(
+        hour=12, minute=0, second=0, microsecond=0
+    )
+    end_time = start_time + dt.timedelta(days=1)
     tf = pd.date_range(
-        start=dt.datetime.now() - dt.timedelta(days=1),
-        end=dt.datetime.now(),
+        start=start_time,
+        end=end_time,
         freq="1min",
     )
     delta_t = 1 / len(tf)
@@ -195,17 +199,12 @@ async def test_refresh_of_provider_asset_attribute_data():
     await set_data(models.ProviderAssetMarket.__tablename__, df)
 
     # Create the provider asset group.
-    await refresh_provider_asset_attribute_data(
-        start=dt.datetime.now() - dt.timedelta(days=1), end=dt.datetime.now()
-    )
+    await refresh_provider_asset_attribute_data(start=start_time, end=end_time)
 
     # Check if the provider asset group was created.
     with Session(engine) as session:
-        provider_asset_group = session.execute(
-            select(models.ProviderAssetGroup).where(
-                models.ProviderAssetGroup.name
-                == f"{btc_asset.name}{usd_asset.name}-{eth_asset.name}{usd_asset.name}",
-            )
-        ).scalar_one()
+        provider_asset_group = (
+            session.execute(select(models.ProviderAssetGroup)).scalars().all()
+        )
         assert provider_asset_group is not None
         assert len(provider_asset_group.members) == 2

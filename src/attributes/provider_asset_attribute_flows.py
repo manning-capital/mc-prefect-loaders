@@ -1,13 +1,9 @@
 import datetime as dt
 from typing import Optional
 
-import pandas as pd
 import polars as pl
-import dask.dataframe as dd
-import mc_postgres_db.models as models
 from prefect import flow, task, get_run_logger
-from sqlalchemy import select
-from prefect_dask import DaskTaskRunner, get_dask_client
+from prefect_dask import DaskTaskRunner
 from prefect.cache_policies import NO_CACHE
 from mc_postgres_db.prefect.asyncio.tasks import get_engine
 
@@ -39,124 +35,42 @@ async def refresh_by_asset_group_type(
     )
     provider_asset_group_ids = asset_group_type.get_current_provider_asset_group_ids()
 
-    # Generate a data from for all provider asset groups.
-    provider_asset_group_members_ddf: dd.DataFrame = dd.read_sql(
-        sql=select(
-            models.ProviderAssetGroupMember.provider_asset_group_id,
-            models.ProviderAssetGroupMember.order,
-            models.ProviderAssetMarket.timestamp,
-            models.ProviderAssetMarket.provider_id,
-            models.ProviderAssetMarket.from_asset_id,
-            models.ProviderAssetMarket.to_asset_id,
-            *asset_group_type.provider_asset_market_columns,
-        )
-        .join(
-            models.ProviderAssetMarket,
-            models.ProviderAssetGroupMember.provider_id
-            == models.ProviderAssetMarket.provider_id
-            and models.ProviderAssetGroupMember.from_asset_id
-            == models.ProviderAssetMarket.from_asset_id
-            and models.ProviderAssetGroupMember.to_asset_id
-            == models.ProviderAssetMarket.to_asset_id,
-        )
-        .where(
-            models.ProviderAssetGroupMember.provider_asset_group_id.in_(
-                provider_asset_group_ids
-            ),
-            models.ProviderAssetMarket.timestamp
-            >= start - dt.timedelta(days=1),  # Get an extra day so we can forward fill.
-            models.ProviderAssetMarket.timestamp <= end,
-        ),
-        con=engine.url.render_as_string(hide_password=False),
-        index_col=models.ProviderAssetGroupMember.provider_asset_group_id.name,
-    )
-
-    # Convert to pandas.
-    provider_asset_group_members_dff: pd.DataFrame = (
-        provider_asset_group_members_ddf.compute()
-    )
-
-    # Construct the timeframe.
-    tf_all = dd.from_pandas(
-        {
-            "timestamp": pd.date_range(
-                start=provider_asset_group_members_ddf["timestamp"].min().compute(),
-                end=provider_asset_group_members_ddf["timestamp"].max().compute(),
-                freq="1min",
-            )
-        }
-    )
-    tf = dd.from_pandas({"timestamp": pd.date_range(start=start, end=end, freq="1min")})
-
-    # Forward fill the provider asset market data.
-    all_columns = set(provider_asset_group_members_ddf.columns)
-    id_columns = {"provider_id", "from_asset_id", "to_asset_id"}
-    non_id_columns = all_columns - id_columns
-    provider_asset_group_members_ddf = provider_asset_group_members_ddf.join(
-        tf_all,
-        how="cross",
-    )
-    provider_asset_group_members_ddf = (
-        provider_asset_market_df.group_by(id_columns)
-        .agg(pl.col("*").sort_by("timestamp").forward_fill())
-        .explode(non_id_columns)
-    )
-    provider_asset_market_df = provider_asset_market_df.filter(
-        pl.col("timestamp") >= start
-    )
-    provider_asset_market_df = provider_asset_market_df.filter(
-        pl.col("timestamp") <= end
-    )
-    provider_asset_market_df = provider_asset_market_df.drop_nulls()
-
-    # Cross-join the provider asset market data with the provider asset group members.
-    provider_asset_group_members_df: pl.DataFrame = (
-        provider_asset_group_members_df.join(
-            tf,
-            how="cross",
-        )
-    )
-    provider_asset_group_members_df = provider_asset_group_members_df.join(
-        provider_asset_market_df,
-        on=["timestamp", "provider_id", "from_asset_id", "to_asset_id"],
-        how="left",
-    )
-
-    # Pivot the provider asset market data based on the order so that each provider asset group member is a column.
-    provider_asset_group_members_df: pl.DataFrame = (
-        provider_asset_group_members_df.pivot(
-            index="timestamp",
-            columns="order",
-            values={column.name for column in query_columns} - set(["timestamp"]),
-        )
-    )
-    pivotted_id_columns: list[str] = [
-        f"{key_column}_{i}"
-        for i in range(1, asset_group_type.group_size + 1)
-        for key_column in key_columns
-    ]
-
-    # Group by and forward fill the provider asset market data.
-    provider_asset_group_members_df = provider_asset_group_members_df.drop_nulls()
-    provider_asset_group_members_ddf: dd.DataFrame = dd.from_pandas(
-        provider_asset_group_members_df.to_pandas(), npartitions=4
-    )
-
     # Calculate the attributes for the provider asset market data dataframes.
     for window in asset_group_type.windows:
+        # Get the provider asset group market data for the window.
+        logger.info(
+            f"Getting the provider asset group market data for {asset_group_type.asset_group_type.name} with window {window}..."
+        )
+        provider_asset_group_members_df: pl.DataFrame = (
+            asset_group_type.get_provider_asset_group_market_data(
+                provider_asset_group_ids=provider_asset_group_ids,
+                start=start - window,
+                end=end,
+            )
+        )
+
+        # Calculate the attributes for the provider asset group market data dataframes.
         logger.info(
             f"Calculating attributes for {asset_group_type.asset_group_type.name} with window {window}..."
         )
-        with get_dask_client() as client:
-            attribute_results = provider_asset_group_members_ddf.group_by(
-                pivotted_id_columns
-            ).apply(
-                lambda df: asset_group_type.calculate_group_attributes(
-                    window=window,
-                    step=asset_group_type.step,
-                    group_market_df=df,
-                )
+        for name, data in provider_asset_group_members_df.group_by(
+            [
+                "provider_asset_group_id",
+            ]
+        ):
+            # Check if the data is empty.
+            if data.is_empty():
+                logger.info(f"Data is empty for {name}, skipping...")
+                continue
+
+            # Calculate the attributes for the provider asset group market data dataframes.
+            logger.info(f"Calculating attributes for {name}...")
+            attribute_results = asset_group_type.calculate_group_attributes(
+                window=window,
+                step=asset_group_type.step,
+                group_market_df=data,
             )
+            logger.info(f"Attribute results: {attribute_results}")
 
 
 @flow(

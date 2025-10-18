@@ -157,22 +157,35 @@ class StatisticalPairsTrading(AbstractAssetGroupType):
         Calculate the attributes for the provider asset group data dataframe.
         """
 
+        # Determine the timestamps we will use as window anchors based on the step size (timedelta)
+        timestamps = group_market_df["timestamp"].sort().to_numpy()
+        start_time = timestamps[0]
+        end_time = timestamps[-1]
+        anchor_timestamps = []
+        current_time = start_time + window
+        while current_time <= end_time:
+            anchor_timestamps.append(current_time)
+            current_time = current_time + step
+
         # Initialize the arrays.
-        beta = np.empty(len(group_market_df) // step)
-        alpha = np.empty(len(group_market_df) // step)
-        timestamp = np.empty(len(group_market_df) // step)
-        mse = np.empty(len(group_market_df) // step)
-        r_squared = np.empty(len(group_market_df) // step)
-        r_squared_adj = np.empty(len(group_market_df) // step)
-        theta = np.empty(len(group_market_df) // step)
-        mu = np.empty(len(group_market_df) // step)
-        sigma = np.empty(len(group_market_df) // step)
-        p_value = np.empty(len(group_market_df) // step)
+        beta = np.empty(len(anchor_timestamps))
+        alpha = np.empty(len(anchor_timestamps))
+        timestamp = np.empty(len(anchor_timestamps))
+        mse = np.empty(len(anchor_timestamps))
+        r_squared = np.empty(len(anchor_timestamps))
+        r_squared_adj = np.empty(len(anchor_timestamps))
+        theta = np.empty(len(anchor_timestamps))
+        mu = np.empty(len(anchor_timestamps))
+        sigma = np.empty(len(anchor_timestamps))
+        p_value = np.empty(len(anchor_timestamps))
 
         # Perform a linear regression over the window and step size.
-        for i in range(0, len(group_market_df), step):
+        for i, anchor_timestamp in enumerate(anchor_timestamps):
             # Get the window of data.
-            group_market_df_window = group_market_df.slice(i, window)
+            group_market_df_window = group_market_df.filter(
+                pl.col("timestamp") >= anchor_timestamp - window,
+                pl.col("timestamp") <= anchor_timestamp,
+            )
 
             # Get the close columns.
             close_1 = group_market_df_window["close_1"].to_numpy()
@@ -184,7 +197,7 @@ class StatisticalPairsTrading(AbstractAssetGroupType):
             linear_regression = OLS(y, X).fit()
 
             # Get the slope and intercept of the linear regression.
-            timestamp[i] = group_market_df_window["timestamp"].max()
+            timestamp[i] = anchor_timestamp
             beta[i] = linear_regression.params[1]
             alpha[i] = linear_regression.params[0]
             residuals = linear_regression.resid
@@ -230,9 +243,9 @@ class StatisticalPairsTrading(AbstractAssetGroupType):
                 models.ProviderAssetGroupAttribute.linear_fit_mse.name: mse,
                 models.ProviderAssetGroupAttribute.linear_fit_r_squared.name: r_squared,
                 models.ProviderAssetGroupAttribute.linear_fit_r_squared_adj.name: r_squared_adj,
-                models.ProviderAssetGroupAttribute.ou_theta.name: theta,
-                models.ProviderAssetGroupAttribute.ou_mu.name: mu,
-                models.ProviderAssetGroupAttribute.ou_sigma.name: sigma,
+                models.ProviderAssetGroupAttribute.ol_theta.name: theta,
+                models.ProviderAssetGroupAttribute.ol_mu.name: mu,
+                models.ProviderAssetGroupAttribute.ol_sigma.name: sigma,
                 models.ProviderAssetGroupAttribute.cointegration_p_value.name: p_value,
             }
         )
