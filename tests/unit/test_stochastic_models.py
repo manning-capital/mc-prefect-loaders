@@ -286,20 +286,18 @@ def test_ou_parameter_recovery_standard():
     mu_fitted = np.zeros(N_SIMULATED)
     theta_fitted = np.zeros(N_SIMULATED)
     sigma_fitted = np.zeros(N_SIMULATED)
-    log_likelihood = np.zeros(N_SIMULATED)
 
     # Fit the simulated data
     for i in range(N_SIMULATED):
-        ou_fit = OrnsteinUhlenbeck()
-        mu_fitted[i], theta_fitted[i], sigma_fitted[i], log_likelihood[i] = ou_fit.fit(
-            simulated_values[i, :], DELTA_T
-        )
+        params = OrnsteinUhlenbeck().fit(simulated_values[i, :])
+        mu_fitted[i] = params.mu
+        theta_fitted[i] = params.theta
+        sigma_fitted[i] = params.sigma
 
     # Calculate the mean of the fitted parameters
     mu_fitted_mean = np.mean(mu_fitted)
     theta_fitted_mean = np.mean(theta_fitted)
     sigma_fitted_mean = np.mean(sigma_fitted)
-    log_likelihood_mean = np.mean(log_likelihood)
 
     # Assert parameters are recovered within tolerance
     assert_within_tolerance(mu_fitted_mean, mu_true, tolerance=TOLERANCE)
@@ -307,7 +305,6 @@ def test_ou_parameter_recovery_standard():
         theta_fitted_mean, theta_true, tolerance=0.20
     )  # Mean harder to estimate
     assert_within_tolerance(sigma_fitted_mean, sigma_true)
-    assert np.isfinite(log_likelihood_mean)
 
 
 def test_ou_parameter_recovery_fast_reversion():
