@@ -257,29 +257,59 @@ class OrnsteinUhlenbeck:
 
     def fit(self, X: np.ndarray) -> OUParams:
         """
-        Estimates Ornstein-Uhlenbeck parameters from the given array using OLS regression.
+        Estimates Ornstein-Uhlenbeck parameters from the given array using OLS regression
+        on the exact discrete-time solution (not the Euler approximation).
+
+        The exact OU discrete transition is:
+        X_{t+dt} = theta*(1 - exp(-mu*dt)) + X_t*exp(-mu*dt) + sigma*sqrt((1-exp(-2*mu*dt))/(2*mu))*noise
+
+        Letting a = exp(-mu*dt), we can write:
+        X_{t+dt} = theta*(1 - a) + X_t*a + noise
+
+        OLS regression of X_{t+1} on X_t gives:
+        - intercept = theta*(1 - a)
+        - coef = a = exp(-mu*dt)
+
+        Therefore:
+        - mu = -log(coef) / dt
+        - theta = intercept / (1 - coef)
 
         input: X - array-like data to be fit as an OU process
         returns: OUParams
         """
-        # Set the parameters.
-        y = np.diff(X)
-        X_with_const = sm.add_constant(X[:-1])  # Add intercept column
+        # Regress X_{t+1} on X_t (not differences!)
+        X_next = X[1:]
+        X_lag = X[:-1]
+        X_with_const = sm.add_constant(X_lag)
 
-        # Fit OLS regression: y = intercept + coef*X
-        model = sm.OLS(y, X_with_const)
+        # Fit OLS regression: X_{t+1} = intercept + coef*X_t
+        model = sm.OLS(X_next, X_with_const)
         results = model.fit()
 
         # Extract coefficients: [intercept, coef]
         intercept = results.params[0]
         coef = results.params[1]
 
-        # Extract OU parameters
-        mu = -coef
-        theta = intercept / mu if mu != 0 else 0
+        # Extract OU parameters from exact solution
+        # coef = exp(-mu*DELTA_T), which must be in (0, 1) for a valid mean-reverting OU process
+        if not (0 < coef < 1):
+            raise ValueError(
+                f"Invalid OLS coefficient {coef:.6f}. For a mean-reverting OU process, "
+                f"the coefficient must be in (0, 1) since it equals exp(-mu*DELTA_T). "
+                f"This indicates the data does not follow an OU process or has insufficient variation."
+            )
+
+        mu = -np.log(coef) / DELTA_T
+        theta = intercept / (1 - coef)
 
         # Get residual standard deviation
-        sigma = np.sqrt(results.mse_resid)
+        # residuals = X_{t+1} - (theta*(1-a) + X_t*a)
+        # Theoretical: sigma_residual = sigma * sqrt((1 - exp(-2*mu*dt)) / (2*mu))
+        residual_std = np.sqrt(results.mse_resid)
+
+        # Back out sigma from residual_std
+        # residual_std^2 = sigma^2 * (1 - exp(-2*mu*dt)) / (2*mu)
+        sigma = residual_std * np.sqrt(2 * mu / (1 - np.exp(-2 * mu * DELTA_T)))
 
         return OUParams(mu, theta, sigma)
 
