@@ -349,7 +349,7 @@ def test_ou_parameter_recovery_slow_reversion():
     # Fit the simulated data
     ou_fit = OrnsteinUhlenbeck()
     mu_fitted, theta_fitted, sigma_fitted, log_likelihood = ou_fit.fit(
-        simulated_values, DT
+        simulated_values, DELTA_T
     )
 
     # Assert parameters are recovered within tolerance
@@ -443,7 +443,7 @@ def test_ou_autocorrelation():
 
     for lag in lags:
         # Theoretical autocorrelation: exp(-mu * lag * dt)
-        theoretical_autocorr = np.exp(-mu * lag * DT)
+        theoretical_autocorr = np.exp(-mu * lag * DELTA_T)
 
         # Observed autocorrelation
         centered = simulated_values - np.mean(simulated_values)
