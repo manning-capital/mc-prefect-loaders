@@ -22,10 +22,47 @@ class GeometricBrownianMotion:
         """
         Computes the log likelihood of the GBM process.
         """
+        """
+        Calculates the log-likelihood for a Geometric Brownian Motion model.
+
+        The GBM is defined by dS_t = mu*S_t*dt + sigma*S_t*dW_t.
+        The log-returns follow a normal distribution.
+
+        Args:
+            params (list or tuple): A list containing the GBM parameters [mu, sigma].
+            prices (np.ndarray): A 1D NumPy array of asset prices.
+            dt (float): The constant time step between price observations.
+
+        Returns:
+            float: The negative log-likelihood value. This is typically used for
+                minimization routines, which is why the negative is returned.
+        """
         mu, sigma = params
-        return -0.5 * np.log(2 * np.pi) - np.log(sigma) - 1 / (2 * len(X)) * np.sum((X - X[0] * np.exp((mu - 0.5 * sigma**2) * dt))**2 / (sigma**2 * dt))
-        
-    def simulate(self, N: int, N_simulated: int, dt: float = None) -> np.ndarray:
+
+        if sigma <= 0:
+            return np.inf  # Negative sigma is not valid
+
+        # Calculate log-returns from the prices
+        log_returns = np.diff(np.log(X))
+
+        # Number of observations (log-return increments)
+        n = len(log_returns)
+
+        # Expected mean of the log-returns over time step dt
+        expected_mean = (mu - 0.5 * sigma**2) * dt
+
+        # Calculate the log-likelihood terms
+        term1 = -0.5 * n * np.log(2 * np.pi)
+        term2 = -0.5 * n * np.log(sigma**2 * dt)
+        term3 = -np.sum((log_returns - expected_mean)**2) / (2 * sigma**2 * dt)
+
+        log_likelihood = term1 + term2 + term3
+
+        # For minimization, return the negative log-likelihood
+        return -log_likelihood
+
+
+    def simulate(self, N: int, N_simulated: int, X_0: float, dt: float = None) -> np.ndarray:
         """
         Simulates the GBM process.
         """
@@ -34,11 +71,11 @@ class GeometricBrownianMotion:
             
         # Initialize the simulated process.
         X_simulated = np.zeros((N_simulated, N))
-        X_simulated[:, 0] = self.theta  # initial value
+        X_simulated[:, 0] = X_0  # initial value
         
         # Simulate the process.
         for i in range(1, N):
-            X_simulated[:, i] = X_simulated[:, i - 1] * np.exp((self.mu - 0.5 * self.sigma**2) * dt + self.sigma * np.random.normal(0, 1, N_simulated))
+            X_simulated[:, i] = X_simulated[:, i - 1] * np.exp((self.mu - 0.5 * self.sigma**2) * dt + self.sigma * np.sqrt(dt) * np.random.normal(0, 1, N_simulated))
             
         return X_simulated
 
@@ -62,10 +99,11 @@ class GeometricBrownianMotion:
             (small_bound, None),
             (small_bound, None),
         )
-        
-        # Initialize the initial values.
-        mu_init = small_bound
-        sigma_init = np.std(self.X)
+
+        # Initialize the initial values using log-returns
+        log_returns = np.diff(np.log(self.X))
+        sigma_init = np.std(log_returns) / np.sqrt(dt)
+        mu_init = np.mean(log_returns) / dt + 0.5 * sigma_init**2
 
         # Minimize the log likelihood.
         result = so.minimize(
@@ -194,7 +232,7 @@ class OrnsteinUhlenbeck:
         # Return the parameters.
         return mu, theta, sigma, max_log_likelihood
 
-    def simulate(self, N: int, N_simulated: int, dt: float = None) -> np.ndarray:
+    def simulate(self, N: int, N_simulated: int, X_0: float, dt: float = None) -> np.ndarray:
         """
         Simulates the OU process.
         """
@@ -203,7 +241,7 @@ class OrnsteinUhlenbeck:
 
         # Initialize the simulated process.
         X_simulated = np.zeros((N_simulated, N))
-        X_simulated[:, 0] = self.theta  # initial value
+        X_simulated[:, 0] = X_0  # initial value
 
         # Simulate the process.
         for i in range(1, N):
