@@ -15,10 +15,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, aliased
 from sqlalchemy.engine import Engine
 from statsmodels.tsa.stattools import coint
-from statsmodels.tsa.arima.model import ARIMA
 from statsmodels.regression.linear_model import OLS
 
 from src.attributes.abstract import AbstractAssetGroupType
+from src.attributes.stochastic_models import OrnsteinUhlenbeck
+
+DELTA_T = 1 / (24 * 60 * 60)  # 1 divided by the number of seconds in a day
 
 
 class StatisticalPairsTrading(AbstractAssetGroupType):
@@ -161,23 +163,23 @@ class StatisticalPairsTrading(AbstractAssetGroupType):
         timestamps = group_market_df["timestamp"].sort().to_numpy()
         start_time = timestamps[0]
         end_time = timestamps[-1]
-        anchor_timestamps = []
+        anchor_timestamps: list[dt.datetime] = []
         current_time = start_time + window
         while current_time <= end_time:
             anchor_timestamps.append(current_time)
             current_time = current_time + step
 
         # Initialize the arrays.
-        beta = np.empty(len(anchor_timestamps))
-        alpha = np.empty(len(anchor_timestamps))
-        timestamp = np.empty(len(anchor_timestamps))
-        mse = np.empty(len(anchor_timestamps))
-        r_squared = np.empty(len(anchor_timestamps))
-        r_squared_adj = np.empty(len(anchor_timestamps))
-        theta = np.empty(len(anchor_timestamps))
-        mu = np.empty(len(anchor_timestamps))
-        sigma = np.empty(len(anchor_timestamps))
-        p_value = np.empty(len(anchor_timestamps))
+        timestamp_array: list[dt.datetime] = []
+        beta_array: list[float] = []
+        alpha_array: list[float] = []
+        mse_array: list[float] = []
+        r_squared_array: list[float] = []
+        r_squared_adj_array: list[float] = []
+        theta_array: list[float] = []
+        mu_array: list[float] = []
+        sigma_array: list[float] = []
+        p_value_array: list[float] = []
 
         # Perform a linear regression over the window and step size.
         for i, anchor_timestamp in enumerate(anchor_timestamps):
@@ -197,55 +199,42 @@ class StatisticalPairsTrading(AbstractAssetGroupType):
             linear_regression = OLS(y, X).fit()
 
             # Get the slope and intercept of the linear regression.
-            timestamp[i] = anchor_timestamp
-            beta[i] = linear_regression.params[1]
-            alpha[i] = linear_regression.params[0]
+            timestamp_array.append(anchor_timestamp)
+            beta_array.append(linear_regression.params[1])
+            alpha_array.append(linear_regression.params[0])
             residuals = linear_regression.resid
 
             # Calculate the mean squared error of the residuals.
-            mse[i] = linear_regression.mse
+            mse_array.append(linear_regression.mse_total)
 
             # Calculate the R-squared of the linear regression.
-            r_squared[i] = linear_regression.rsquared
+            r_squared_array.append(linear_regression.rsquared)
 
             # Calculate the adjusted R-squared of the linear regression.
-            r_squared_adj[i] = linear_regression.rsquared_adj
+            r_squared_adj_array.append(linear_regression.rsquared_adj)
 
             # Run the cointegration test.
-            p_value[i] = coint(close_1, close_2)[1]
+            cointegration_result = coint(close_1, close_2)
+            p_value_array.append(cointegration_result[1])
 
-            # Fit the residuals to the Ornstein-Uhlenbeck process using AR(1) model.
-            # The AR(1) process: X_t = phi * X_{t-1} + c + e_t
-            # OU process: dX_t = theta*(mu - X_t)dt + sigma*dW_t
-            # The mapping is: theta = -ln(phi), mu = c/(1-phi), sigma = std(residuals) * sqrt(2*theta/(1-phi**2))
-            arima = ARIMA(residuals, order=(1, 0, 0)).fit()
-            phi = arima.params.get("ar.L1", arima.params[1])  # AR(1) coefficient
-            c = arima.params.get("const", arima.params[0])  # Intercept
-
-            # Ensure phi is less than 1 for stationarity
-            if abs(phi) < 1:
-                theta[i] = -np.log(phi)
-                mu[i] = c / (1 - phi)
-                # Estimate sigma of noise
-                sigma_e = np.sqrt(arima.sigma2)
-                sigma[i] = sigma_e * np.sqrt(2 * theta[i] / (1 - phi**2))
-            else:
-                theta[i] = np.nan
-                mu[i] = np.nan
-                sigma[i] = np.nan
+            # Fit the residuals to the Ornstein-Uhlenbeck process.
+            theta, mu, sigma, _ = OrnsteinUhlenbeck().fit(residuals, DELTA_T)
+            theta_array.append(theta)
+            mu_array.append(mu)
+            sigma_array.append(sigma)
 
         # Return the provider asset group data dataframe.
         return pl.DataFrame(
             {
-                models.ProviderAssetGroupAttribute.timestamp.name: timestamp,
-                models.ProviderAssetGroupAttribute.linear_fit_beta.name: beta,
-                models.ProviderAssetGroupAttribute.linear_fit_alpha.name: alpha,
-                models.ProviderAssetGroupAttribute.linear_fit_mse.name: mse,
-                models.ProviderAssetGroupAttribute.linear_fit_r_squared.name: r_squared,
-                models.ProviderAssetGroupAttribute.linear_fit_r_squared_adj.name: r_squared_adj,
-                models.ProviderAssetGroupAttribute.ol_theta.name: theta,
-                models.ProviderAssetGroupAttribute.ol_mu.name: mu,
-                models.ProviderAssetGroupAttribute.ol_sigma.name: sigma,
-                models.ProviderAssetGroupAttribute.cointegration_p_value.name: p_value,
+                models.ProviderAssetGroupAttribute.timestamp.name: timestamp_array,
+                models.ProviderAssetGroupAttribute.linear_fit_beta.name: beta_array,
+                models.ProviderAssetGroupAttribute.linear_fit_alpha.name: alpha_array,
+                models.ProviderAssetGroupAttribute.linear_fit_mse.name: mse_array,
+                models.ProviderAssetGroupAttribute.linear_fit_r_squared.name: r_squared_array,
+                models.ProviderAssetGroupAttribute.linear_fit_r_squared_adj.name: r_squared_adj_array,
+                models.ProviderAssetGroupAttribute.ol_theta.name: theta_array,
+                models.ProviderAssetGroupAttribute.ol_mu.name: mu_array,
+                models.ProviderAssetGroupAttribute.ol_sigma.name: sigma_array,
+                models.ProviderAssetGroupAttribute.cointegration_p_value.name: p_value_array,
             }
         )

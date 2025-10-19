@@ -154,10 +154,8 @@ async def test_refresh_of_provider_asset_attribute_data():
     mu = 0.0001
     sigma = 0.01
     S_btc_to_usd = 10000
-    start_time = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=1)).replace(
-        hour=12, minute=0, second=0, microsecond=0
-    )
-    end_time = start_time + dt.timedelta(days=1)
+    start_time = (dt.datetime.now()).replace(hour=12, minute=0, second=0, microsecond=0)
+    end_time = start_time + dt.timedelta(days=60)
     tf = pd.date_range(
         start=start_time,
         end=end_time,
