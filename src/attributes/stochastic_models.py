@@ -1,22 +1,121 @@
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+
 import numpy as np
 import scipy.optimize as so
+from sklearn.linear_model import LinearRegression
 
-DELTA_T = 1 / (24 * 60 * 60)  # 1 divided by the number of seconds in a day
+# Constants: These are the parameters that are used to estimate the GBM and OU processes they should never be changed.
+DELTA_T = 1 / (
+    24 * 60 * 60 * 1_000_000_000
+)  # 1 divided by the number of nanoseconds in a day
 
 
-class GeometricBrownianMotion:
+class StochasticModelParams(ABC):
+    """
+    Base class for stochastic model parameters.
+    """
+
+    @abstractmethod
+    def __init__(self, params: dict):
+        self.params = params
+
+    @abstractmethod
+    def to_dict(self) -> dict:
+        """
+        Convert the parameters to a dictionary.
+        """
+        pass
+
+
+@dataclass
+class GBMParams(StochasticModelParams):
+    mu: float  # drift parameter
+    sigma: float  # volatility parameter
+
+    def __init__(self, mu: float, sigma: float):
+        self.mu = mu
+        self.sigma = sigma
+
+    def to_dict(self) -> dict:
+        return {"mu": self.mu, "sigma": self.sigma}
+
+
+@dataclass
+class OUParams(StochasticModelParams):
+    mu: float  # mean reversion parameter
+    theta: float  # asymptotic mean
+    sigma: float  # Brownian motion scale (standard deviation)
+
+    def __init__(self, mu: float, theta: float, sigma: float):
+        self.mu = mu
+        self.theta = theta
+        self.sigma = sigma
+
+    def to_dict(self) -> dict:
+        return {"mu": self.mu, "theta": self.theta, "sigma": self.sigma}
+
+
+class StochasticModel(ABC):
+    """
+    Base class for stochastic models.
+    """
+
+    params: StochasticModelParams
+
+    def __init__(self, params: StochasticModelParams):
+        self.params = params
+
+    @abstractmethod
+    def log_likelihood(self, X: np.ndarray, dt: float) -> float:
+        """
+        Compute the log likelihood of the model.
+        """
+        pass
+
+    @abstractmethod
+    def fit(self, X: np.ndarray, dt: float) -> tuple[float, float, float, float]:
+        """
+        Fit the model to the data.
+        """
+        pass
+
+    @abstractmethod
+    def simulate(
+        self, N: int, N_simulated: int, X_0: float, dt: float = None
+    ) -> np.ndarray:
+        """
+        Simulate the model.
+        """
+        pass
+
+
+def estimate_OU_params(X_t: np.ndarray) -> OUParams:
+    """
+    Estimate OU params from OLS regression.
+    - X_t is a 1D array.
+    Returns instance of OUParams.
+    """
+    y = np.diff(X_t)
+    X = X_t[:-1].reshape(-1, 1)
+    reg = LinearRegression(fit_intercept=True)
+    reg.fit(X, y)
+    # regression coeficient and constant
+    mu = -reg.coef_[0]
+    theta = reg.intercept_ / mu
+    # residuals and their standard deviation
+    y_hat = reg.predict(X)
+    sigma = np.std(y - y_hat)
+    return OUParams(mu, theta, sigma)
+
+
+class GeometricBrownianMotion(StochasticModel):
     """
     Geometric Brownian Motion process.
     """
 
-    X: np.ndarray
-    dt: float
-    mu: float
-    sigma: float
-
-    def __init__(self, mu: float = None, sigma: float = None):
-        self.mu = mu
-        self.sigma = sigma
+    def __init__(self, params: GBMParams):
+        super().__init__(params)
 
     @staticmethod
     def __log_likelihood(
@@ -158,17 +257,10 @@ class OrnsteinUhlenbeck:
         self.theta = theta
         self.sigma = sigma
 
-    @staticmethod
-    def __log_likelihood(
-        params: tuple[float, float, float], X: np.ndarray, dt: float
-    ) -> float:
+    def log_likelihood(self, X: np.ndarray, dt: float) -> float:
         """
         Computes the log likelihood of the OU process.
         """
-
-        # Get the parameters.
-        mu, theta, sigma = params
-
         # Get the number of observations.
         n = len(X)
 
@@ -177,7 +269,9 @@ class OrnsteinUhlenbeck:
         X_next = X[1:]
 
         # Get the tilde sigma.
-        tilde_sigma = sigma * np.sqrt((1 - np.exp(-2 * mu * dt)) / (2 * mu))
+        tilde_sigma = self.sigma * np.sqrt(
+            (1 - np.exp(-2 * self.mu * dt)) / (2 * self.mu)
+        )
 
         # Compute the log likelihood.
         log_likelihood = (
@@ -186,61 +280,36 @@ class OrnsteinUhlenbeck:
             - 1
             / (2 * n * tilde_sigma**2)
             * np.sum(
-                (X_next - X_lag * np.exp(-mu * dt) - theta * (1 - np.exp(-mu * dt)))
+                (
+                    X_next
+                    - X_lag * np.exp(-self.mu * dt)
+                    - self.theta * (1 - np.exp(-self.mu * dt))
+                )
                 ** 2
             )
         )
 
         return -log_likelihood
 
-    def fit(self, X: np.ndarray, dt: float) -> tuple[float, float, float, float]:
+    def fit(self, X: np.ndarray) -> OUParams:
         """
-        Estimates Ornstein-Uhlenbeck coefficients (θ, µ, σ) of the given array
-        using the Maximum Likelihood Estimation method
+        Estimates Ornstein-Uhlenbeck parameters from the given array using OLS regression.
 
         input: X - array-like data to be fit as an OU process
-        returns: θ, µ, σ, Total Log Likelihood
+        returns: OUParams
         """
         # Set the parameters.
-        self.X = X
-        self.dt = dt
-
-        # Set the small bound.
-        small_bound = 1e-9
-
-        # Set the bounds.
-        bounds = (
-            (small_bound, None),
-            (None, None),
-            (small_bound, None),
-        )  # mu > 0, theta ∈ ℝ, sigma > 0
-
-        # Initialize the initial values.
-        mu_init = small_bound
-        sigma_init = np.std(self.X)
-        theta_init = np.mean(self.X)
-
-        # Minimize the log likelihood.
-        result = so.minimize(
-            lambda params, X, dt: OrnsteinUhlenbeck.__log_likelihood(params, X, dt),
-            (mu_init, theta_init, sigma_init),
-            args=(self.X, self.dt),
-            method="L-BFGS-B",
-            bounds=bounds,
-            tol=1e-10,
-        )
-
-        # Get the parameters.
-        mu, theta, sigma = result.x
-        max_log_likelihood = -result.fun  # undo negation from __compute_log_likelihood
-
-        # Set the parameters.
-        self.mu = mu
-        self.theta = theta
-        self.sigma = sigma
-
-        # Return the parameters.
-        return mu, theta, sigma, max_log_likelihood
+        y = np.diff(X)
+        X = X[:-1].reshape(-1, 1)
+        reg = LinearRegression(fit_intercept=True)
+        reg.fit(X, y)
+        # regression coeficient and constant
+        mu = -reg.coef_[0]
+        theta = reg.intercept_ / mu
+        # residuals and their standard deviation
+        y_hat = reg.predict(X)
+        sigma = np.std(y - y_hat)
+        return OUParams(mu, theta, sigma)
 
     def simulate(
         self, N: int, N_simulated: int, X_0: float, dt: float = None
