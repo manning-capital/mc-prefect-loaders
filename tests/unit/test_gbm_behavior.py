@@ -21,12 +21,45 @@ from src.attributes.stochastic_models import DELTA_T, GBMParams, GeometricBrowni
 # Test configuration
 N_POINTS = 100  # Number of time steps
 N_SIMULATED = 10000  # Number of paths for averaging
+TOLERANCE = 0.15  # ±15% tolerance for parameter recovery
 INITIAL_PRICE = 100.0
 
 
 def set_random_seed(seed: int = 42):
     """Set random seed for reproducibility."""
     np.random.seed(seed)
+
+
+def assert_within_tolerance(
+    fitted_value: float, true_value: float, tolerance: float = TOLERANCE
+):
+    """
+    Assert that a fitted parameter is within the specified tolerance of the true value.
+
+    Args:
+        fitted_value: The parameter value estimated from data
+        true_value: The true parameter value used to generate the data
+        tolerance: Relative tolerance (default ±15%)
+    """
+    if true_value == 0:
+        # For zero values, use absolute tolerance
+        assert abs(fitted_value) <= tolerance, (
+            f"Fitted value {fitted_value} not within absolute tolerance {tolerance} of 0"
+        )
+    elif true_value > 0:
+        lower_bound = true_value * (1 - tolerance)
+        upper_bound = true_value * (1 + tolerance)
+        assert lower_bound <= fitted_value <= upper_bound, (
+            f"Fitted value {fitted_value} not within ±{tolerance * 100}% of true value {true_value}. "
+            f"Expected range: [{lower_bound:.6f}, {upper_bound:.6f}]"
+        )
+    else:
+        lower_bound = true_value * (1 + tolerance)
+        upper_bound = true_value * (1 - tolerance)
+        assert lower_bound <= fitted_value <= upper_bound, (
+            f"Fitted value {fitted_value} not within ±{tolerance * 100}% of true value {true_value}. "
+            f"Expected range: [{lower_bound:.6f}, {upper_bound:.6f}]"
+        )
 
 
 # ============================================================================
@@ -423,36 +456,250 @@ def test_gbm_price_lognormal():
 # ============================================================================
 
 
-def test_gbm_fit_recovers_parameters():
+def test_gbm_parameter_recovery_standard():
     """
-    Test that fit() correctly recovers known parameters from simulated data.
+    Test GBM parameter recovery with typical parameters.
 
-    Generate data with known parameters, fit the model, and check recovery.
+    Parameters:
+    - mu = 0.05 (moderate positive drift)
+    - sigma = 0.2 (moderate volatility)
     """
     set_random_seed(51)
 
     # True parameters
-    mu_true = 0.08
-    sigma_true = 0.25
+    mu_true = 0.05
+    sigma_true = 0.2
 
+    # Create model and simulate
     params = GBMParams(mu=mu_true, sigma=sigma_true)
     gbm = GeometricBrownianMotion(params=params)
-
-    # Simulate a long path
-    simulated_prices = gbm.simulate(N=5000, N_simulated=1, X_0=INITIAL_PRICE)[0]
-
-    # Fit the model
-    gbm_fit = GeometricBrownianMotion(params=GBMParams(mu=0, sigma=0))
-    fitted_params = gbm_fit.fit(simulated_prices)
-
-    # Check parameter recovery (±20% tolerance for finite sample)
-    assert 0.8 * mu_true < fitted_params.mu < 1.2 * mu_true, (
-        f"Fitted mu {fitted_params.mu:.4f} differs from true {mu_true:.4f}"
+    simulated_prices = gbm.simulate(
+        N=N_POINTS, N_simulated=N_SIMULATED, X_0=INITIAL_PRICE
     )
 
-    assert 0.8 * sigma_true < fitted_params.sigma < 1.2 * sigma_true, (
-        f"Fitted sigma {fitted_params.sigma:.4f} differs from true {sigma_true:.4f}"
+    # Store the fitted parameters
+    mu_fitted = np.zeros(N_SIMULATED)
+    sigma_fitted = np.zeros(N_SIMULATED)
+
+    # Fit the simulated data
+    for i in range(N_SIMULATED):
+        gbm_fit = GeometricBrownianMotion(params=GBMParams(mu=0, sigma=0))
+        fitted_params = gbm_fit.fit(simulated_prices[i, :])
+        mu_fitted[i] = fitted_params.mu
+        sigma_fitted[i] = fitted_params.sigma
+
+    # Calculate the mean of the fitted parameters
+    mu_fitted_mean = np.mean(mu_fitted)
+    sigma_fitted_mean = np.mean(sigma_fitted)
+
+    # Assert parameters are recovered within tolerance
+    assert_within_tolerance(mu_fitted_mean, mu_true, tolerance=TOLERANCE)
+    assert_within_tolerance(sigma_fitted_mean, sigma_true, tolerance=TOLERANCE)
+
+
+def test_gbm_parameter_recovery_zero_drift():
+    """
+    Test GBM parameter recovery with zero drift (martingale case).
+
+    Parameters:
+    - mu = 0.0 (no drift)
+    - sigma = 0.2 (moderate volatility)
+    """
+    set_random_seed(52)
+
+    # True parameters
+    mu_true = 0.0
+    sigma_true = 0.2
+
+    # Create model and simulate
+    params = GBMParams(mu=mu_true, sigma=sigma_true)
+    gbm = GeometricBrownianMotion(params=params)
+    simulated_prices = gbm.simulate(
+        N=N_POINTS, N_simulated=N_SIMULATED, X_0=INITIAL_PRICE
     )
+
+    # Store the fitted parameters
+    mu_fitted = np.zeros(N_SIMULATED)
+    sigma_fitted = np.zeros(N_SIMULATED)
+
+    # Fit the simulated data
+    for i in range(N_SIMULATED):
+        gbm_fit = GeometricBrownianMotion(params=GBMParams(mu=0, sigma=0))
+        fitted_params = gbm_fit.fit(simulated_prices[i, :])
+        mu_fitted[i] = fitted_params.mu
+        sigma_fitted[i] = fitted_params.sigma
+
+    # Calculate the mean of the fitted parameters
+    mu_fitted_mean = np.mean(mu_fitted)
+    sigma_fitted_mean = np.mean(sigma_fitted)
+
+    # Assert parameters are recovered within tolerance
+    assert_within_tolerance(mu_fitted_mean, mu_true, tolerance=TOLERANCE)
+    assert_within_tolerance(sigma_fitted_mean, sigma_true, tolerance=TOLERANCE)
+
+
+def test_gbm_parameter_recovery_negative_drift():
+    """
+    Test GBM parameter recovery with negative drift.
+
+    Parameters:
+    - mu = -0.05 (negative drift)
+    - sigma = 0.2 (moderate volatility)
+    """
+    set_random_seed(53)
+
+    # True parameters
+    mu_true = -0.05
+    sigma_true = 0.2
+
+    # Create model and simulate
+    params = GBMParams(mu=mu_true, sigma=sigma_true)
+    gbm = GeometricBrownianMotion(params=params)
+    simulated_prices = gbm.simulate(
+        N=N_POINTS, N_simulated=N_SIMULATED, X_0=INITIAL_PRICE
+    )
+
+    # Store the fitted parameters
+    mu_fitted = np.zeros(N_SIMULATED)
+    sigma_fitted = np.zeros(N_SIMULATED)
+
+    # Fit the simulated data
+    for i in range(N_SIMULATED):
+        gbm_fit = GeometricBrownianMotion(params=GBMParams(mu=0, sigma=0))
+        fitted_params = gbm_fit.fit(simulated_prices[i, :])
+        mu_fitted[i] = fitted_params.mu
+        sigma_fitted[i] = fitted_params.sigma
+
+    # Calculate the mean of the fitted parameters
+    mu_fitted_mean = np.mean(mu_fitted)
+    sigma_fitted_mean = np.mean(sigma_fitted)
+
+    # Assert parameters are recovered within tolerance
+    assert_within_tolerance(mu_fitted_mean, mu_true, tolerance=TOLERANCE)
+    assert_within_tolerance(sigma_fitted_mean, sigma_true, tolerance=TOLERANCE)
+
+
+def test_gbm_parameter_recovery_high_volatility():
+    """
+    Test GBM parameter recovery with high volatility.
+
+    Parameters:
+    - mu = 0.05 (moderate positive drift)
+    - sigma = 0.5 (high volatility)
+    """
+    set_random_seed(54)
+
+    # True parameters
+    mu_true = 0.05
+    sigma_true = 0.5
+
+    # Create model and simulate
+    params = GBMParams(mu=mu_true, sigma=sigma_true)
+    gbm = GeometricBrownianMotion(params=params)
+    simulated_prices = gbm.simulate(
+        N=N_POINTS, N_simulated=N_SIMULATED, X_0=INITIAL_PRICE
+    )
+
+    # Store the fitted parameters
+    mu_fitted = np.zeros(N_SIMULATED)
+    sigma_fitted = np.zeros(N_SIMULATED)
+
+    # Fit the simulated data
+    for i in range(N_SIMULATED):
+        gbm_fit = GeometricBrownianMotion(params=GBMParams(mu=0, sigma=0))
+        fitted_params = gbm_fit.fit(simulated_prices[i, :])
+        mu_fitted[i] = fitted_params.mu
+        sigma_fitted[i] = fitted_params.sigma
+
+    # Calculate the mean of the fitted parameters
+    mu_fitted_mean = np.mean(mu_fitted)
+    sigma_fitted_mean = np.mean(sigma_fitted)
+
+    # Assert parameters are recovered within tolerance
+    assert_within_tolerance(mu_fitted_mean, mu_true, tolerance=TOLERANCE)
+    assert_within_tolerance(sigma_fitted_mean, sigma_true, tolerance=TOLERANCE)
+
+
+def test_gbm_parameter_recovery_low_volatility():
+    """
+    Test GBM parameter recovery with low volatility.
+
+    Parameters:
+    - mu = 0.05 (moderate positive drift)
+    - sigma = 0.05 (low volatility)
+    """
+    set_random_seed(55)
+
+    # True parameters
+    mu_true = 0.05
+    sigma_true = 0.05
+
+    # Create model and simulate
+    params = GBMParams(mu=mu_true, sigma=sigma_true)
+    gbm = GeometricBrownianMotion(params=params)
+    simulated_prices = gbm.simulate(
+        N=N_POINTS, N_simulated=N_SIMULATED, X_0=INITIAL_PRICE
+    )
+
+    # Store the fitted parameters
+    mu_fitted = np.zeros(N_SIMULATED)
+    sigma_fitted = np.zeros(N_SIMULATED)
+
+    # Fit the simulated data
+    for i in range(N_SIMULATED):
+        gbm_fit = GeometricBrownianMotion(params=GBMParams(mu=0, sigma=0))
+        fitted_params = gbm_fit.fit(simulated_prices[i, :])
+        mu_fitted[i] = fitted_params.mu
+        sigma_fitted[i] = fitted_params.sigma
+
+    # Calculate the mean of the fitted parameters
+    mu_fitted_mean = np.mean(mu_fitted)
+    sigma_fitted_mean = np.mean(sigma_fitted)
+
+    # Assert parameters are recovered within tolerance
+    assert_within_tolerance(mu_fitted_mean, mu_true, tolerance=TOLERANCE)
+    assert_within_tolerance(sigma_fitted_mean, sigma_true, tolerance=TOLERANCE)
+
+
+def test_gbm_parameter_recovery_high_drift():
+    """
+    Test GBM parameter recovery with high positive drift.
+
+    Parameters:
+    - mu = 0.20 (high positive drift)
+    - sigma = 0.2 (moderate volatility)
+    """
+    set_random_seed(56)
+
+    # True parameters
+    mu_true = 0.20
+    sigma_true = 0.2
+
+    # Create model and simulate
+    params = GBMParams(mu=mu_true, sigma=sigma_true)
+    gbm = GeometricBrownianMotion(params=params)
+    simulated_prices = gbm.simulate(
+        N=N_POINTS, N_simulated=N_SIMULATED, X_0=INITIAL_PRICE
+    )
+
+    # Store the fitted parameters
+    mu_fitted = np.zeros(N_SIMULATED)
+    sigma_fitted = np.zeros(N_SIMULATED)
+
+    # Fit the simulated data
+    for i in range(N_SIMULATED):
+        gbm_fit = GeometricBrownianMotion(params=GBMParams(mu=0, sigma=0))
+        fitted_params = gbm_fit.fit(simulated_prices[i, :])
+        mu_fitted[i] = fitted_params.mu
+        sigma_fitted[i] = fitted_params.sigma
+
+    # Calculate the mean of the fitted parameters
+    mu_fitted_mean = np.mean(mu_fitted)
+    sigma_fitted_mean = np.mean(sigma_fitted)
+
+    # Assert parameters are recovered within tolerance
+    assert_within_tolerance(mu_fitted_mean, mu_true, tolerance=TOLERANCE)
+    assert_within_tolerance(sigma_fitted_mean, sigma_true, tolerance=TOLERANCE)
 
 
 def test_gbm_fit_different_sample_sizes():

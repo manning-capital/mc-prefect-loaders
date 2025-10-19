@@ -208,16 +208,10 @@ class OrnsteinUhlenbeck:
     where $W_t$ is a Wiener process.
     """
 
-    X: np.ndarray
-    dt: float
-    mu: float
-    theta: float
-    sigma: float
+    params: OUParams
 
-    def __init__(self, mu: float = None, theta: float = None, sigma: float = None):
-        self.mu = mu
-        self.theta = theta
-        self.sigma = sigma
+    def __init__(self, params: OUParams):
+        self.params = params
 
     def log_likelihood(self, X: np.ndarray) -> float:
         """
@@ -233,8 +227,8 @@ class OrnsteinUhlenbeck:
         X_next = X[1:]
 
         # Get the tilde sigma.
-        tilde_sigma = self.sigma * np.sqrt(
-            (1 - np.exp(-2 * self.mu * DELTA_T)) / (2 * self.mu)
+        tilde_sigma = self.params.sigma * np.sqrt(
+            (1 - np.exp(-2 * self.params.mu * DELTA_T)) / (2 * self.params.mu)
         )
 
         # Compute the log likelihood.
@@ -246,8 +240,8 @@ class OrnsteinUhlenbeck:
             * np.sum(
                 (
                     X_next
-                    - X_lag * np.exp(-self.mu * DELTA_T)
-                    - self.theta * (1 - np.exp(-self.mu * DELTA_T))
+                    - X_lag * np.exp(-self.params.mu * DELTA_T)
+                    - self.params.theta * (1 - np.exp(-self.params.mu * DELTA_T))
                 )
                 ** 2
             )
@@ -311,7 +305,10 @@ class OrnsteinUhlenbeck:
         # residual_std^2 = sigma^2 * (1 - exp(-2*mu*dt)) / (2*mu)
         sigma = residual_std * np.sqrt(2 * mu / (1 - np.exp(-2 * mu * DELTA_T)))
 
-        return OUParams(mu, theta, sigma)
+        # Update the parameters.
+        self.params = OUParams(mu=mu, theta=theta, sigma=sigma)
+
+        return self.params
 
     def simulate(self, N: int, N_simulated: int, X_0: float) -> np.ndarray:
         """
@@ -326,10 +323,10 @@ class OrnsteinUhlenbeck:
         # Simulate the process.
         for i in range(1, N):
             X_simulated[:, i] = (
-                X_simulated[:, i - 1] * np.exp(-self.mu * DELTA_T)
-                + self.theta * (1 - np.exp(-self.mu * DELTA_T))
-                + self.sigma
-                * np.sqrt((1 - np.exp(-2 * self.mu * DELTA_T)) / (2 * self.mu))
+                X_simulated[:, i - 1] * np.exp(-self.params.mu * DELTA_T)
+                + self.params.theta * (1 - np.exp(-self.params.mu * DELTA_T))
+                + self.params.sigma
+                * np.sqrt((1 - np.exp(-2 * self.params.mu * DELTA_T)) / (2 * self.params.mu))
                 * np.random.normal(0, 1, N_simulated)
             )
 

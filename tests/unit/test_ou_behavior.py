@@ -9,6 +9,7 @@ import pytest
 from src.attributes.stochastic_models import (
     DELTA_T,
     OrnsteinUhlenbeck,
+    OUParams,
 )
 
 # Test configuration constants
@@ -82,7 +83,7 @@ def test_ou_parameter_recovery_standard():
     sigma_true = 0.1
 
     # Create model and simulate
-    ou = OrnsteinUhlenbeck(mu=mu_true, theta=theta_true, sigma=sigma_true)
+    ou = OrnsteinUhlenbeck(OUParams(mu=mu_true, theta=theta_true, sigma=sigma_true))
     simulated_values = ou.simulate(
         N=N_POINTS, N_simulated=N_SIMULATED, X_0=INITIAL_VALUE
     )
@@ -94,7 +95,7 @@ def test_ou_parameter_recovery_standard():
 
     # Fit the simulated data
     for i in range(N_SIMULATED):
-        params = OrnsteinUhlenbeck().fit(simulated_values[i, :])
+        params = OrnsteinUhlenbeck(OUParams(0, 0, 0)).fit(simulated_values[i, :])
         mu_fitted[i] = params.mu
         theta_fitted[i] = params.theta
         sigma_fitted[i] = params.sigma
@@ -123,7 +124,7 @@ def test_ou_parameter_recovery_non_zero_theta():
     theta_true = 1.0  # long-term mean
     sigma_true = 0.1
 
-    ou = OrnsteinUhlenbeck(mu=mu_true, theta=theta_true, sigma=sigma_true)
+    ou = OrnsteinUhlenbeck(OUParams(mu=mu_true, theta=theta_true, sigma=sigma_true))
     simulated_values = ou.simulate(
         N=N_POINTS, N_simulated=N_SIMULATED, X_0=INITIAL_VALUE
     )
@@ -135,7 +136,7 @@ def test_ou_parameter_recovery_non_zero_theta():
 
     # Fit the simulated data
     for i in range(N_SIMULATED):
-        params = OrnsteinUhlenbeck().fit(simulated_values[i, :])
+        params = OrnsteinUhlenbeck(OUParams(0, 0, 0)).fit(simulated_values[i, :])
         mu_fitted[i] = params.mu
         theta_fitted[i] = params.theta
         sigma_fitted[i] = params.sigma
@@ -162,7 +163,7 @@ def test_ou_parameter_recovery_large_positive_theta():
     theta_true = 100.0  # long-term mean
     sigma_true = 0.1
 
-    ou = OrnsteinUhlenbeck(mu=mu_true, theta=theta_true, sigma=sigma_true)
+    ou = OrnsteinUhlenbeck(OUParams(mu=mu_true, theta=theta_true, sigma=sigma_true))
     simulated_values = ou.simulate(
         N=N_POINTS, N_simulated=N_SIMULATED, X_0=INITIAL_VALUE
     )
@@ -174,7 +175,7 @@ def test_ou_parameter_recovery_large_positive_theta():
 
     # Fit the simulated data
     for i in range(N_SIMULATED):
-        params = OrnsteinUhlenbeck().fit(simulated_values[i, :])
+        params = OrnsteinUhlenbeck(OUParams(0, 0, 0)).fit(simulated_values[i, :])
         mu_fitted[i] = params.mu
         theta_fitted[i] = params.theta
         sigma_fitted[i] = params.sigma
@@ -201,7 +202,7 @@ def test_ou_parameter_recovery_large_negative_theta():
     theta_true = -100.0  # long-term mean
     sigma_true = 0.1
 
-    ou = OrnsteinUhlenbeck(mu=mu_true, theta=theta_true, sigma=sigma_true)
+    ou = OrnsteinUhlenbeck(OUParams(mu=mu_true, theta=theta_true, sigma=sigma_true))
     simulated_values = ou.simulate(
         N=N_POINTS, N_simulated=N_SIMULATED, X_0=INITIAL_VALUE
     )
@@ -213,7 +214,7 @@ def test_ou_parameter_recovery_large_negative_theta():
 
     # Fit the simulated data
     for i in range(N_SIMULATED):
-        params = OrnsteinUhlenbeck().fit(simulated_values[i, :])
+        params = OrnsteinUhlenbeck(OUParams(0, 0, 0)).fit(simulated_values[i, :])
         mu_fitted[i] = params.mu
         theta_fitted[i] = params.theta
         sigma_fitted[i] = params.sigma
@@ -246,7 +247,7 @@ def test_ou_parameter_recovery_fast_reversion():
     sigma_true = 0.25
 
     # Create model and simulate
-    ou = OrnsteinUhlenbeck(mu=mu_true, theta=theta_true, sigma=sigma_true)
+    ou = OrnsteinUhlenbeck(OUParams(mu=mu_true, theta=theta_true, sigma=sigma_true))
     simulated_values = ou.simulate(
         N=N_POINTS,
         N_simulated=N_SIMULATED,
@@ -260,7 +261,7 @@ def test_ou_parameter_recovery_fast_reversion():
 
     # Fit the simulated data
     for i in range(N_SIMULATED):
-        params = OrnsteinUhlenbeck().fit(simulated_values[i, :])
+        params = OrnsteinUhlenbeck(OUParams(0, 0, 0)).fit(simulated_values[i, :])
         mu_fitted[i] = params.mu
         theta_fitted[i] = params.theta
         sigma_fitted[i] = params.sigma
@@ -293,7 +294,7 @@ def test_ou_parameter_recovery_slow_reversion():
     sigma_true = 0.15
 
     # Create model and simulate
-    ou = OrnsteinUhlenbeck(mu=mu_true, theta=theta_true, sigma=sigma_true)
+    ou = OrnsteinUhlenbeck(OUParams(mu=mu_true, theta=theta_true, sigma=sigma_true))
     simulated_values = ou.simulate(
         N=N_POINTS,
         N_simulated=N_SIMULATED,
@@ -307,7 +308,7 @@ def test_ou_parameter_recovery_slow_reversion():
 
     # Fit the simulated data
     for i in range(N_SIMULATED):
-        params = OrnsteinUhlenbeck().fit(simulated_values[i, :])
+        params = OrnsteinUhlenbeck(OUParams(0, 0, 0)).fit(simulated_values[i, :])
         mu_fitted[i] = params.mu
         theta_fitted[i] = params.theta
         sigma_fitted[i] = params.sigma
@@ -339,7 +340,7 @@ def test_ou_mean_reversion_property():
     initial_value = 5.0
 
     # Simulate
-    ou = OrnsteinUhlenbeck(mu=mu, theta=theta, sigma=sigma)
+    ou = OrnsteinUhlenbeck(OUParams(mu=mu, theta=theta, sigma=sigma))
     simulated_values = ou.simulate(
         N=10_000,  # Shorter path for this test
         N_simulated=1,
@@ -373,7 +374,7 @@ def test_ou_stationary_variance():
     theoretical_variance = sigma**2 / (2 * mu)
 
     # Simulate long path starting at mean
-    ou = OrnsteinUhlenbeck(mu=mu, theta=theta, sigma=sigma)
+    ou = OrnsteinUhlenbeck(OUParams(mu=mu, theta=theta, sigma=sigma))
     simulated_values = ou.simulate(N=N_POINTS, N_simulated=1, X_0=theta)[0]
 
     # Use second half of data to ensure stationarity
@@ -404,7 +405,7 @@ def test_ou_autocorrelation():
     lags = [1, 5, 10]
 
     # Simulate
-    ou = OrnsteinUhlenbeck(mu=mu, theta=theta, sigma=sigma)
+    ou = OrnsteinUhlenbeck(OUParams(mu=mu, theta=theta, sigma=sigma))
     simulated_values = ou.simulate(N=N_POINTS, N_simulated=N_SIMULATED, X_0=theta)
 
     # Calculate autocorrelation at a few lags
@@ -455,7 +456,7 @@ def test_ou_convergence_to_stationary():
     # Theoretical stationary variance
     stationary_var = sigma**2 / (2 * mu)
 
-    ou = OrnsteinUhlenbeck(mu=mu, theta=theta, sigma=sigma)
+    ou = OrnsteinUhlenbeck(OUParams(mu=mu, theta=theta, sigma=sigma))
     simulated_values = ou.simulate(
         N=N_POINTS, N_simulated=N_SIMULATED, X_0=initial_value
     )
@@ -495,7 +496,7 @@ def test_ou_half_life():
     # Start away from mean
     initial_value = 2.0
 
-    ou = OrnsteinUhlenbeck(mu=mu, theta=theta, sigma=sigma)
+    ou = OrnsteinUhlenbeck(OUParams(mu=mu, theta=theta, sigma=sigma))
 
     # Simulate many paths to average out noise
     simulated_values = ou.simulate(
@@ -540,7 +541,7 @@ def test_ou_symmetry():
     theta = 0.0
     sigma = 0.25
 
-    ou = OrnsteinUhlenbeck(mu=mu, theta=theta, sigma=sigma)
+    ou = OrnsteinUhlenbeck(OUParams(mu=mu, theta=theta, sigma=sigma))
 
     # Start above mean
     initial_above = 2.0
@@ -582,7 +583,7 @@ def test_ou_fit_recovers_parameters():
     theta_true = 1.0
     sigma_true = 0.3
 
-    ou = OrnsteinUhlenbeck(mu=mu_true, theta=theta_true, sigma=sigma_true)
+    ou = OrnsteinUhlenbeck(OUParams(mu=mu_true, theta=theta_true, sigma=sigma_true))
 
     # Test with different starting points
     starting_points = [-2.0, 0.0, 1.0, 3.0]
@@ -592,7 +593,7 @@ def test_ou_fit_recovers_parameters():
         simulated_values = ou.simulate(N=N_POINTS, N_simulated=1, X_0=X_0)[0]
 
         # Fit
-        fitted_params = OrnsteinUhlenbeck().fit(simulated_values)
+        fitted_params = OrnsteinUhlenbeck(OUParams(0, 0, 0)).fit(simulated_values)
 
         # Check recovery (±20% tolerance)
         assert 0.8 * mu_true < fitted_params.mu < 1.2 * mu_true, (
@@ -616,7 +617,7 @@ def test_ou_fit_with_different_sample_sizes():
     theta_true = 0.0
     sigma_true = 0.2
 
-    ou = OrnsteinUhlenbeck(mu=mu_true, theta=theta_true, sigma=sigma_true)
+    ou = OrnsteinUhlenbeck(OUParams(mu=mu_true, theta=theta_true, sigma=sigma_true))
 
     sample_sizes = [1000, 5000, 10000]
     mu_errors = []
@@ -626,7 +627,7 @@ def test_ou_fit_with_different_sample_sizes():
         for i in range(20):
             simulated_values = ou.simulate(N=n, N_simulated=1, X_0=theta_true)[0]
 
-            fitted_params = OrnsteinUhlenbeck().fit(simulated_values)
+            fitted_params = OrnsteinUhlenbeck(OUParams(0, 0, 0)).fit(simulated_values)
 
             # Calculate relative error for mu
             error = abs(fitted_params.mu - mu_true) / mu_true
@@ -659,7 +660,7 @@ def test_ou_invalid_coefficient_raises_error():
     noise = 0.1
     X = np.cumsum(np.random.normal(trend, noise, 1000))
 
-    ou = OrnsteinUhlenbeck()
+    ou = OrnsteinUhlenbeck(OUParams(0, 0, 0))
 
     # Should raise ValueError because coefficient will be >= 1
     with pytest.raises(ValueError, match="Invalid OLS coefficient"):
@@ -678,7 +679,7 @@ def test_ou_very_slow_mean_reversion():
     theta = 0.0
     sigma = 0.2
 
-    ou = OrnsteinUhlenbeck(mu=mu, theta=theta, sigma=sigma)
+    ou = OrnsteinUhlenbeck(OUParams(mu=mu, theta=theta, sigma=sigma))
 
     # Simulate
     simulated_values = ou.simulate(N=N_POINTS, N_simulated=N_SIMULATED, X_0=5.0)
@@ -712,7 +713,7 @@ def test_ou_crossing_behavior():
     theta = 0.0
     sigma = 0.3
 
-    ou = OrnsteinUhlenbeck(mu=mu, theta=theta, sigma=sigma)
+    ou = OrnsteinUhlenbeck(OUParams(mu=mu, theta=theta, sigma=sigma))
 
     # Start away from mean
     initial_value = 2.0

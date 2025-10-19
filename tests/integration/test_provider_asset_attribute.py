@@ -14,7 +14,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), os.pardir))
 from mc_postgres_db.prefect.asyncio.tasks import set_data, get_engine
 
 from tests.utils import sample_asset_data, sample_provider_data
-from src.attributes.stochastic_models import OrnsteinUhlenbeck
+from src.attributes.stochastic_models import OrnsteinUhlenbeck, GeometricBrownianMotion, GBMParams, OUParams
 from src.attributes.provider_asset_attribute_flows import (
     refresh_provider_asset_attribute_data,
 )
@@ -144,6 +144,10 @@ async def test_refresh_of_provider_asset_attribute_data():
         session.commit()
         session.refresh(pairs_trading_asset_group_type)
 
+    # Create the first asset to be a geometric brownian motion.
+    gb_process = GeometricBrownianMotion(params=GBMParams(mu=mu, sigma=sigma))
+    X = gb_process.simulate(N=len(tf), N_simulated=1)
+
     # Initialize the parameters for Ornstein-Uhlenbeck process including the linear fit between two assets.
     alpha = 850
     beta = 4.5
@@ -153,7 +157,7 @@ async def test_refresh_of_provider_asset_attribute_data():
     S_eth_to_usd = 10000
     S_btc_to_usd = alpha + beta * S_eth_to_usd
     ou_process = OrnsteinUhlenbeck(mu=mu, theta=theta, sigma=sigma)
-    X = ou_process.simulate(N=len(tf), N_simulated=1, dt=DELTA_T)
+    X = ou_process.simulate(N=len(tf), N_simulated=1)
 
     # Create provider asset market data over 30 days.
     mu = 0.0001
