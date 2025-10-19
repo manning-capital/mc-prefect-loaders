@@ -3,7 +3,7 @@ from dataclasses import dataclass
 
 import numpy as np
 import scipy.optimize as so
-from sklearn.linear_model import LinearRegression
+import statsmodels.api as sm
 
 # Constants: These are the parameters that are used to estimate the GBM and OU processes they should never be changed.
 DELTA_T = 1 / (
@@ -88,25 +88,6 @@ class StochasticModel(ABC):
         Simulate the model.
         """
         pass
-
-
-def estimate_OU_params(X_t: np.ndarray) -> OUParams:
-    """
-    Estimate OU params from OLS regression.
-    - X_t is a 1D array.
-    Returns instance of OUParams.
-    """
-    y = np.diff(X_t)
-    X = X_t[:-1].reshape(-1, 1)
-    reg = LinearRegression(fit_intercept=True)
-    reg.fit(X, y)
-    # regression coeficient and constant
-    mu = -reg.coef_[0]
-    theta = reg.intercept_ / mu
-    # residuals and their standard deviation
-    y_hat = reg.predict(X)
-    sigma = np.std(y - y_hat)
-    return OUParams(mu, theta, sigma)
 
 
 class GeometricBrownianMotion(StochasticModel):
@@ -300,15 +281,23 @@ class OrnsteinUhlenbeck:
         """
         # Set the parameters.
         y = np.diff(X)
-        X = X[:-1].reshape(-1, 1)
-        reg = LinearRegression(fit_intercept=True)
-        reg.fit(X, y)
-        # regression coeficient and constant
-        mu = -reg.coef_[0]
-        theta = reg.intercept_ / mu
-        # residuals and their standard deviation
-        y_hat = reg.predict(X)
-        sigma = np.std(y - y_hat)
+        X_with_const = sm.add_constant(X[:-1])  # Add intercept column
+        
+        # Fit OLS regression: y = intercept + coef*X
+        model = sm.OLS(y, X_with_const)
+        results = model.fit()
+        
+        # Extract coefficients: [intercept, coef]
+        intercept = results.params[0]
+        coef = results.params[1]
+        
+        # Extract OU parameters
+        mu = -coef
+        theta = intercept / mu if mu != 0 else 0
+        
+        # Get residual standard deviation
+        sigma = np.sqrt(results.mse_resid)
+        
         return OUParams(mu, theta, sigma)
 
     def simulate(
