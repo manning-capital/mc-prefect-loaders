@@ -114,7 +114,9 @@ class GeometricBrownianMotion:
 
         # Minimize the log likelihood.
         result = so.minimize(
-            GeometricBrownianMotion.__log_likelihood,
+            lambda params, X, dt: GeometricBrownianMotion.__log_likelihood(
+                params, X, dt
+            ),
             (mu_init, sigma_init),
             args=(self.X, self.dt),
             method="L-BFGS-B",
@@ -220,7 +222,7 @@ class OrnsteinUhlenbeck:
 
         # Minimize the log likelihood.
         result = so.minimize(
-            OrnsteinUhlenbeck.__log_likelihood,
+            lambda params, X, dt: OrnsteinUhlenbeck.__log_likelihood(params, X, dt),
             (mu_init, theta_init, sigma_init),
             args=(self.X, self.dt),
             method="L-BFGS-B",
