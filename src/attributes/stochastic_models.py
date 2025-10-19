@@ -326,7 +326,9 @@ class OrnsteinUhlenbeck:
                 X_simulated[:, i - 1] * np.exp(-self.params.mu * DELTA_T)
                 + self.params.theta * (1 - np.exp(-self.params.mu * DELTA_T))
                 + self.params.sigma
-                * np.sqrt((1 - np.exp(-2 * self.params.mu * DELTA_T)) / (2 * self.params.mu))
+                * np.sqrt(
+                    (1 - np.exp(-2 * self.params.mu * DELTA_T)) / (2 * self.params.mu)
+                )
                 * np.random.normal(0, 1, N_simulated)
             )
 

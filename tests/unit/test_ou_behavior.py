@@ -8,8 +8,8 @@ import pytest
 
 from src.attributes.stochastic_models import (
     DELTA_T,
-    OrnsteinUhlenbeck,
     OUParams,
+    OrnsteinUhlenbeck,
 )
 
 # Test configuration constants

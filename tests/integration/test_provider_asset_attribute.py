@@ -14,7 +14,11 @@ sys.path.append(os.path.join(os.path.dirname(__file__), os.pardir))
 from mc_postgres_db.prefect.asyncio.tasks import set_data, get_engine
 
 from tests.utils import sample_asset_data, sample_provider_data
-from src.attributes.stochastic_models import OrnsteinUhlenbeck, GeometricBrownianMotion, GBMParams, OUParams
+from src.attributes.stochastic_models import (
+    GBMParams,
+    OrnsteinUhlenbeck,
+    GeometricBrownianMotion,
+)
 from src.attributes.provider_asset_attribute_flows import (
     refresh_provider_asset_attribute_data,
 )
