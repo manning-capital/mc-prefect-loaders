@@ -5,7 +5,6 @@ sys.path.append(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir))
 
 import numpy as np
 import pytest
-from scipy import stats
 
 from src.attributes.stochastic_models import (
     DELTA_T,
@@ -176,7 +175,7 @@ def test_ou_parameter_recovery_slow_reversion():
         N_simulated=N_SIMULATED,
         X_0=theta_true,  # Start at mean
     )
-    
+
     # Store the fitted parameters.
     mu_fitted = np.zeros(N_SIMULATED)
     theta_fitted = np.zeros(N_SIMULATED)
@@ -294,7 +293,7 @@ def test_ou_autocorrelation():
 
             # Store the autocorrelation
             autocorrelations[i, lags.index(lag)] = autocorr
-    
+
     # Calculate the mean of the autocorrelations
     autocorrelations_mean = np.mean(autocorrelations, axis=0)
 
@@ -396,7 +395,11 @@ def test_ou_half_life():
         observed_half_life = observed_half_life_idx * DELTA_T
 
         # Should be within ±50% of theoretical (wider tolerance due to discrete time steps)
-        assert 0.5 * theoretical_half_life < observed_half_life < 1.5 * theoretical_half_life, (
+        assert (
+            0.5 * theoretical_half_life
+            < observed_half_life
+            < 1.5 * theoretical_half_life
+        ), (
             f"Observed half-life {observed_half_life:.2f} differs from theoretical {theoretical_half_life:.2f}"
         )
 
@@ -417,15 +420,11 @@ def test_ou_symmetry():
 
     # Start above mean
     initial_above = 2.0
-    simulated_above = ou.simulate(
-        N=5000, N_simulated=N_SIMULATED, X_0=initial_above
-    )
+    simulated_above = ou.simulate(N=5000, N_simulated=N_SIMULATED, X_0=initial_above)
 
     # Start below mean
     initial_below = -2.0
-    simulated_below = ou.simulate(
-        N=5000, N_simulated=N_SIMULATED, X_0=initial_below
-    )
+    simulated_below = ou.simulate(N=5000, N_simulated=N_SIMULATED, X_0=initial_below)
 
     # Calculate average distance to mean over time
     dist_above = np.mean(np.abs(simulated_above - theta), axis=0)
@@ -466,9 +465,7 @@ def test_ou_fit_recovers_parameters():
 
     for X_0 in starting_points:
         # Simulate long path
-        simulated_values = ou.simulate(
-            N=N_POINTS, N_simulated=1, X_0=X_0
-        )[0]
+        simulated_values = ou.simulate(N=N_POINTS, N_simulated=1, X_0=X_0)[0]
 
         # Fit
         fitted_params = OrnsteinUhlenbeck().fit(simulated_values)
@@ -503,9 +500,7 @@ def test_ou_fit_with_different_sample_sizes():
     for n in sample_sizes:
         errors = []
         for i in range(20):
-            simulated_values = ou.simulate(
-                N=n, N_simulated=1, X_0=theta_true
-            )[0]
+            simulated_values = ou.simulate(N=n, N_simulated=1, X_0=theta_true)[0]
 
             fitted_params = OrnsteinUhlenbeck().fit(simulated_values)
 
@@ -517,8 +512,7 @@ def test_ou_fit_with_different_sample_sizes():
 
     # Errors should decrease with sample size
     assert mu_errors[2] < mu_errors[0], (
-        f"Fit error should decrease with sample size. "
-        f"Errors: {mu_errors}"
+        f"Fit error should decrease with sample size. Errors: {mu_errors}"
     )
 
 
@@ -563,12 +557,12 @@ def test_ou_very_slow_mean_reversion():
     ou = OrnsteinUhlenbeck(mu=mu, theta=theta, sigma=sigma)
 
     # Simulate
-    simulated_values = ou.simulate(
-        N=N_POINTS, N_simulated=N_SIMULATED, X_0=5.0
-    )
+    simulated_values = ou.simulate(N=N_POINTS, N_simulated=N_SIMULATED, X_0=5.0)
 
     # Check basic properties
-    assert np.all(np.isfinite(simulated_values)), "Invalid values with slow mean reversion"
+    assert np.all(np.isfinite(simulated_values)), (
+        "Invalid values with slow mean reversion"
+    )
 
     # Mean reversion should be very weak - process should still be far from mean after long time
     # But should show some tendency toward mean
@@ -600,15 +594,13 @@ def test_ou_crossing_behavior():
     initial_value = 2.0
 
     # Simulate single long path
-    simulated_values = ou.simulate(
-        N=N_POINTS, N_simulated=1, X_0=initial_value
-    )[0]
+    simulated_values = ou.simulate(N=N_POINTS, N_simulated=1, X_0=initial_value)[0]
 
     # Count crossings of the mean
     crossings = 0
     for i in range(1, len(simulated_values)):
         # Check if sign changed (crossed zero/theta)
-        if (simulated_values[i-1] - theta) * (simulated_values[i] - theta) < 0:
+        if (simulated_values[i - 1] - theta) * (simulated_values[i] - theta) < 0:
             crossings += 1
 
     # With strong mean reversion, should cross many times

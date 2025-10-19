@@ -14,7 +14,6 @@ import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir))
 
 import numpy as np
-import pytest
 from scipy import stats
 
 from src.attributes.stochastic_models import DELTA_T, GBMParams, GeometricBrownianMotion
@@ -306,9 +305,7 @@ def test_gbm_log_returns_distribution():
     gbm = GeometricBrownianMotion(params=params)
 
     # Simulate a single long path
-    simulated_prices = gbm.simulate(
-        N=10000, N_simulated=1, X_0=INITIAL_PRICE
-    )[0]
+    simulated_prices = gbm.simulate(N=10000, N_simulated=1, X_0=INITIAL_PRICE)[0]
 
     # Calculate log-returns
     log_returns = np.diff(np.log(simulated_prices))
@@ -320,19 +317,20 @@ def test_gbm_log_returns_distribution():
     # Test normality using Kolmogorov-Smirnov test
     # Standardize the log-returns
     standardized = (log_returns - expected_mean) / expected_std
-    ks_statistic, p_value = stats.kstest(standardized, 'norm')
+    ks_statistic, p_value = stats.kstest(standardized, "norm")
 
     # p-value > 0.05 suggests data is consistent with normal distribution
     assert p_value > 0.05, (
-        f"Log-returns do not follow normal distribution. "
-        f"KS test p-value: {p_value:.4f}"
+        f"Log-returns do not follow normal distribution. KS test p-value: {p_value:.4f}"
     )
 
     # Also check that mean and std are close to theoretical
     observed_mean = np.mean(log_returns)
     observed_std = np.std(log_returns, ddof=1)
 
-    assert abs(observed_mean - expected_mean) < 3 * expected_std / np.sqrt(len(log_returns)), (
+    assert abs(observed_mean - expected_mean) < 3 * expected_std / np.sqrt(
+        len(log_returns)
+    ), (
         f"Mean of log-returns {observed_mean:.6f} differs from expected {expected_mean:.6f}"
     )
 
@@ -357,9 +355,7 @@ def test_gbm_variance_grows_linearly():
 
     # Simulate many paths
     N = 200
-    simulated_prices = gbm.simulate(
-        N=N, N_simulated=N_SIMULATED, X_0=INITIAL_PRICE
-    )
+    simulated_prices = gbm.simulate(N=N, N_simulated=N_SIMULATED, X_0=INITIAL_PRICE)
 
     # Calculate log-prices
     log_prices = np.log(simulated_prices)
@@ -370,11 +366,11 @@ def test_gbm_variance_grows_linearly():
 
     for t in time_points:
         # Variance of log(S_t) across paths
-        variance = np.var(log_prices[:, t-1], ddof=1)
+        variance = np.var(log_prices[:, t - 1], ddof=1)
         variances.append(variance)
 
     # Theoretical variances
-    theoretical_variances = [sigma**2 * (t-1) * DELTA_T for t in time_points]
+    theoretical_variances = [sigma**2 * (t - 1) * DELTA_T for t in time_points]
 
     # Check that observed variances are close to theoretical (±30% tolerance)
     for obs, theo, t in zip(variances, theoretical_variances, time_points):
@@ -400,9 +396,7 @@ def test_gbm_price_lognormal():
     gbm = GeometricBrownianMotion(params=params)
 
     # Simulate many paths
-    simulated_prices = gbm.simulate(
-        N=T+1, N_simulated=N_SIMULATED, X_0=INITIAL_PRICE
-    )
+    simulated_prices = gbm.simulate(N=T + 1, N_simulated=N_SIMULATED, X_0=INITIAL_PRICE)
 
     # Get prices at time T
     prices_at_T = simulated_prices[:, T]
@@ -416,7 +410,7 @@ def test_gbm_price_lognormal():
 
     # Test log-normality using KS test on log-transformed data
     standardized = (log_prices - expected_mean) / expected_std
-    ks_statistic, p_value = stats.kstest(standardized, 'norm')
+    ks_statistic, p_value = stats.kstest(standardized, "norm")
 
     assert p_value > 0.05, (
         f"Log-prices do not follow normal distribution (prices not log-normal). "
@@ -445,9 +439,7 @@ def test_gbm_fit_recovers_parameters():
     gbm = GeometricBrownianMotion(params=params)
 
     # Simulate a long path
-    simulated_prices = gbm.simulate(
-        N=5000, N_simulated=1, X_0=INITIAL_PRICE
-    )[0]
+    simulated_prices = gbm.simulate(N=5000, N_simulated=1, X_0=INITIAL_PRICE)[0]
 
     # Fit the model
     gbm_fit = GeometricBrownianMotion(params=GBMParams(mu=0, sigma=0))
@@ -484,9 +476,7 @@ def test_gbm_fit_different_sample_sizes():
         # Simulate and fit multiple times
         errors = []
         for i in range(20):
-            simulated_prices = gbm.simulate(
-                N=n, N_simulated=1, X_0=INITIAL_PRICE
-            )[0]
+            simulated_prices = gbm.simulate(N=n, N_simulated=1, X_0=INITIAL_PRICE)[0]
 
             gbm_fit = GeometricBrownianMotion(params=GBMParams(mu=0, sigma=0))
             fitted_params = gbm_fit.fit(simulated_prices)
@@ -500,8 +490,7 @@ def test_gbm_fit_different_sample_sizes():
     # Errors should generally decrease with sample size
     # Check that largest sample has smaller error than smallest
     assert sigma_errors[2] < sigma_errors[0], (
-        f"Fit error should decrease with sample size. "
-        f"Errors: {sigma_errors}"
+        f"Fit error should decrease with sample size. Errors: {sigma_errors}"
     )
 
 
@@ -525,9 +514,7 @@ def test_gbm_very_low_volatility():
     gbm = GeometricBrownianMotion(params=params)
 
     # Simulate paths
-    simulated_prices = gbm.simulate(
-        N=N_POINTS, N_simulated=100, X_0=INITIAL_PRICE
-    )
+    simulated_prices = gbm.simulate(N=N_POINTS, N_simulated=100, X_0=INITIAL_PRICE)
 
     # Expected deterministic value
     T = N_POINTS * DELTA_T
@@ -556,9 +543,7 @@ def test_gbm_extreme_drift():
     params_high = GBMParams(mu=0.5, sigma=0.2)
     gbm_high = GeometricBrownianMotion(params=params_high)
 
-    prices_high = gbm_high.simulate(
-        N=50, N_simulated=100, X_0=INITIAL_PRICE
-    )
+    prices_high = gbm_high.simulate(N=50, N_simulated=100, X_0=INITIAL_PRICE)
 
     assert np.all(np.isfinite(prices_high)), "High mu produced invalid values"
     assert np.all(prices_high > 0), "High mu produced non-positive prices"
@@ -568,9 +553,7 @@ def test_gbm_extreme_drift():
     params_low = GBMParams(mu=-0.3, sigma=0.2)
     gbm_low = GeometricBrownianMotion(params=params_low)
 
-    prices_low = gbm_low.simulate(
-        N=50, N_simulated=100, X_0=INITIAL_PRICE
-    )
+    prices_low = gbm_low.simulate(N=50, N_simulated=100, X_0=INITIAL_PRICE)
 
     assert np.all(np.isfinite(prices_low)), "Low mu produced invalid values"
     assert np.all(prices_low > 0), "Low mu produced non-positive prices"
@@ -596,17 +579,11 @@ def test_gbm_different_initial_prices():
 
     for X_0 in initial_prices:
         gbm = GeometricBrownianMotion(params=params)
-        simulated_prices = gbm.simulate(
-            N=n_steps, N_simulated=100, X_0=X_0
-        )
+        simulated_prices = gbm.simulate(N=n_steps, N_simulated=100, X_0=X_0)
 
         # Check basic properties
-        assert np.all(simulated_prices > 0), (
-            f"Non-positive prices with X_0={X_0}"
-        )
-        assert np.all(np.isfinite(simulated_prices)), (
-            f"Invalid values with X_0={X_0}"
-        )
+        assert np.all(simulated_prices > 0), f"Non-positive prices with X_0={X_0}"
+        assert np.all(np.isfinite(simulated_prices)), f"Invalid values with X_0={X_0}"
 
         # Check that scaling is appropriate
         # Expected final value
