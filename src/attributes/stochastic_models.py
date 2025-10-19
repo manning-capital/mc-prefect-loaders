@@ -2,13 +2,10 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
 import numpy as np
-import scipy.optimize as so
 import statsmodels.api as sm
 
 # Constants: These are the parameters that are used to estimate the GBM and OU processes they should never be changed.
-DELTA_T = 1 / (
-    24 * 60 * 60 * 1_000_000_000
-)  # 1 divided by the number of nanoseconds in a day
+DELTA_T = 1
 
 
 class StochasticModelParams(ABC):
@@ -67,23 +64,21 @@ class StochasticModel(ABC):
         self.params = params
 
     @abstractmethod
-    def log_likelihood(self, X: np.ndarray, dt: float) -> float:
+    def log_likelihood(self, X: np.ndarray) -> float:
         """
         Compute the log likelihood of the model.
         """
         pass
 
     @abstractmethod
-    def fit(self, X: np.ndarray, dt: float) -> tuple[float, float, float, float]:
+    def fit(self, X: np.ndarray) -> tuple[float, float, float, float]:
         """
         Fit the model to the data.
         """
         pass
 
     @abstractmethod
-    def simulate(
-        self, N: int, N_simulated: int, X_0: float, dt: float = None
-    ) -> np.ndarray:
+    def simulate(self, N: int, N_simulated: int, X_0: float) -> np.ndarray:
         """
         Simulate the model.
         """
@@ -98,122 +93,108 @@ class GeometricBrownianMotion(StochasticModel):
     def __init__(self, params: GBMParams):
         super().__init__(params)
 
-    @staticmethod
-    def __log_likelihood(
-        params: tuple[float, float], X: np.ndarray, dt: float
-    ) -> float:
-        """
-        Computes the log likelihood of the GBM process.
-        """
+    def log_likelihood(self, X: np.ndarray) -> float:
         """
         Calculates the log-likelihood for a Geometric Brownian Motion model.
 
-        The GBM is defined by dS_t = mu*S_t*dt + sigma*S_t*dW_t.
-        The log-returns follow a normal distribution.
+        The GBM SDE: dS_t = mu*S_t*dt + sigma*S_t*dW_t
+        Log-returns follow: r ~ N((mu - 0.5*sigma²)*dt, sigma²*dt)
+
+        Uses the global DELTA_T constant for time step.
 
         Args:
-            params (list or tuple): A list containing the GBM parameters [mu, sigma].
-            prices (np.ndarray): A 1D NumPy array of asset prices.
-            dt (float): The constant time step between price observations.
+            X (np.ndarray): Array of asset prices
 
         Returns:
-            float: The negative log-likelihood value. This is typically used for
-                minimization routines, which is why the negative is returned.
+            float: The negative log-likelihood (for minimization)
         """
-        mu, sigma = params
-
-        if sigma <= 0:
-            return np.inf  # Negative sigma is not valid
-
-        # Calculate log-returns from the prices
+        # Calculate log-returns from prices
         log_returns = np.diff(np.log(X))
-
-        # Number of observations (log-return increments)
         n = len(log_returns)
 
-        # Expected mean of the log-returns over time step dt
-        expected_mean = (mu - 0.5 * sigma**2) * dt
+        # Expected mean of log-returns
+        expected_mean = (self.params.mu - 0.5 * self.params.sigma**2) * DELTA_T
 
-        # Calculate the log-likelihood terms
+        # Calculate log-likelihood terms
         term1 = -0.5 * n * np.log(2 * np.pi)
-        term2 = -0.5 * n * np.log(sigma**2 * dt)
-        term3 = -np.sum((log_returns - expected_mean) ** 2) / (2 * sigma**2 * dt)
+        term2 = -0.5 * n * np.log(self.params.sigma**2 * DELTA_T)
+        term3 = -np.sum((log_returns - expected_mean) ** 2) / (
+            2 * self.params.sigma**2 * DELTA_T
+        )
 
         log_likelihood = term1 + term2 + term3
 
-        # For minimization, return the negative log-likelihood
+        # Return negative for minimization
         return -log_likelihood
 
-    def simulate(
-        self, N: int, N_simulated: int, X_0: float, dt: float = None
-    ) -> np.ndarray:
+    def simulate(self, N: int, N_simulated: int, X_0: float) -> np.ndarray:
         """
-        Simulates the GBM process.
-        """
-        if dt is None:
-            dt = self.dt
+        Simulates GBM paths using the Euler-Maruyama scheme.
 
-        # Initialize the simulated process.
+        Following the approach from:
+        https://towardsdatascience.com/stochastic-processes-simulation-the-ornstein-uhlenbeck-process-e8bff820f3/
+
+        GBM SDE: dS = mu*S*dt + sigma*S*dW
+        Solution: S_t = S_0 * exp((mu - 0.5*sigma²)*t + sigma*W_t)
+
+        Uses the global DELTA_T constant for time step.
+
+        input: N - number of time steps
+               N_simulated - number of paths to simulate
+               X_0 - initial value
+        returns: np.ndarray of shape (N_simulated, N) with simulated paths
+        """
+        # Initialize the simulated paths
         X_simulated = np.zeros((N_simulated, N))
-        X_simulated[:, 0] = X_0  # initial value
+        X_simulated[:, 0] = X_0
 
-        # Simulate the process.
+        # Simulate using the exact solution at each time step
         for i in range(1, N):
             X_simulated[:, i] = X_simulated[:, i - 1] * np.exp(
-                (self.mu - 0.5 * self.sigma**2) * dt
-                + self.sigma * np.sqrt(dt) * np.random.normal(0, 1, N_simulated)
+                (self.params.mu - 0.5 * self.params.sigma**2) * DELTA_T
+                + self.params.sigma
+                * np.sqrt(DELTA_T)
+                * np.random.normal(0, 1, N_simulated)
             )
 
         return X_simulated
 
-    def fit(self, X: np.ndarray, dt: float) -> tuple[float, float, float, float]:
+    def fit(self, X: np.ndarray) -> GBMParams:
         """
-        Estimates Geometric Brownian Motion coefficients (µ, σ) of the given array
-        using the Maximum Likelihood Estimation method
+        Estimates Geometric Brownian Motion parameters from price data.
 
-        input: X - array-like data to be fit as a GBM process
-        returns: µ, σ, Total Log Likelihood
+        Following the moment matching approach similar to:
+        https://towardsdatascience.com/stochastic-processes-simulation-the-ornstein-uhlenbeck-process-e8bff820f3/
+
+        The GBM SDE is: dS = mu*S*dt + sigma*S*dW
+        Taking logs: d(log S) = (mu - 0.5*sigma²)*dt + sigma*dW
+
+        Log-returns follow: r = log(S_t/S_{t-1}) ~ N((mu - 0.5*sigma²)*dt, sigma²*dt)
+
+        Uses the global DELTA_T constant for time step.
+
+        Parameters estimated by moment matching:
+        - Var(r) = sigma²*DELTA_T  =>  sigma = sqrt(Var(r)/DELTA_T)
+        - E[r] = (mu - 0.5*sigma²)*DELTA_T  =>  mu = E[r]/DELTA_T + 0.5*sigma²
+
+        input: X - array-like price data
+        returns: GBMParams with estimated mu and sigma
         """
-        # Set the parameters.
-        self.X = X
-        self.dt = dt
+        # Calculate log-returns
+        log_returns = np.diff(np.log(X))
 
-        # Set the small bound.
-        small_bound = 1e-9
+        # Estimate sigma from variance of log-returns
+        # Var(r) = sigma²*DELTA_T
+        sigma = np.sqrt(np.var(log_returns, ddof=1) / DELTA_T)
 
-        # Set the bounds.
-        bounds = (
-            (small_bound, None),
-            (small_bound, None),
-        )
+        # Estimate mu from mean of log-returns
+        # E[r] = (mu - 0.5*sigma²)*DELTA_T
+        mu = np.mean(log_returns) / DELTA_T + 0.5 * sigma**2
 
-        # Initialize the initial values using log-returns
-        log_returns = np.diff(np.log(self.X))
-        sigma_init = np.std(log_returns) / np.sqrt(dt)
-        mu_init = np.mean(log_returns) / dt + 0.5 * sigma_init**2
+        # Update model parameters
+        self.params = GBMParams(mu=mu, sigma=sigma)
 
-        # Minimize the log likelihood.
-        result = so.minimize(
-            lambda params, X, dt: GeometricBrownianMotion.__log_likelihood(
-                params, X, dt
-            ),
-            (mu_init, sigma_init),
-            args=(self.X, self.dt),
-            method="L-BFGS-B",
-            bounds=bounds,
-            tol=1e-10,
-        )
-
-        # Get the parameters.
-        mu, sigma = result.x
-        max_log_likelihood = -result.fun  # undo negation from __compute_log_likelihood
-
-        # Set the parameters.
-        self.mu = mu
-        self.sigma = sigma
-
-        # Return the parameters.
-        return mu, sigma, max_log_likelihood
+        return self.params
 
 
 class OrnsteinUhlenbeck:
@@ -238,9 +219,11 @@ class OrnsteinUhlenbeck:
         self.theta = theta
         self.sigma = sigma
 
-    def log_likelihood(self, X: np.ndarray, dt: float) -> float:
+    def log_likelihood(self, X: np.ndarray) -> float:
         """
         Computes the log likelihood of the OU process.
+
+        Uses the global DELTA_T constant for time step.
         """
         # Get the number of observations.
         n = len(X)
@@ -251,7 +234,7 @@ class OrnsteinUhlenbeck:
 
         # Get the tilde sigma.
         tilde_sigma = self.sigma * np.sqrt(
-            (1 - np.exp(-2 * self.mu * dt)) / (2 * self.mu)
+            (1 - np.exp(-2 * self.mu * DELTA_T)) / (2 * self.mu)
         )
 
         # Compute the log likelihood.
@@ -263,8 +246,8 @@ class OrnsteinUhlenbeck:
             * np.sum(
                 (
                     X_next
-                    - X_lag * np.exp(-self.mu * dt)
-                    - self.theta * (1 - np.exp(-self.mu * dt))
+                    - X_lag * np.exp(-self.mu * DELTA_T)
+                    - self.theta * (1 - np.exp(-self.mu * DELTA_T))
                 )
                 ** 2
             )
@@ -282,33 +265,30 @@ class OrnsteinUhlenbeck:
         # Set the parameters.
         y = np.diff(X)
         X_with_const = sm.add_constant(X[:-1])  # Add intercept column
-        
+
         # Fit OLS regression: y = intercept + coef*X
         model = sm.OLS(y, X_with_const)
         results = model.fit()
-        
+
         # Extract coefficients: [intercept, coef]
         intercept = results.params[0]
         coef = results.params[1]
-        
+
         # Extract OU parameters
         mu = -coef
         theta = intercept / mu if mu != 0 else 0
-        
+
         # Get residual standard deviation
         sigma = np.sqrt(results.mse_resid)
-        
+
         return OUParams(mu, theta, sigma)
 
-    def simulate(
-        self, N: int, N_simulated: int, X_0: float, dt: float = None
-    ) -> np.ndarray:
+    def simulate(self, N: int, N_simulated: int, X_0: float) -> np.ndarray:
         """
         Simulates the OU process.
-        """
-        if dt is None:
-            dt = self.dt
 
+        Uses the global DELTA_T constant for time step.
+        """
         # Initialize the simulated process.
         X_simulated = np.zeros((N_simulated, N))
         X_simulated[:, 0] = X_0  # initial value
@@ -316,10 +296,10 @@ class OrnsteinUhlenbeck:
         # Simulate the process.
         for i in range(1, N):
             X_simulated[:, i] = (
-                X_simulated[:, i - 1] * np.exp(-self.mu * dt)
-                + self.theta * (1 - np.exp(-self.mu * dt))
+                X_simulated[:, i - 1] * np.exp(-self.mu * DELTA_T)
+                + self.theta * (1 - np.exp(-self.mu * DELTA_T))
                 + self.sigma
-                * np.sqrt((1 - np.exp(-2 * self.mu * dt)) / (2 * self.mu))
+                * np.sqrt((1 - np.exp(-2 * self.mu * DELTA_T)) / (2 * self.mu))
                 * np.random.normal(0, 1, N_simulated)
             )
 
