@@ -40,9 +40,16 @@ def assert_within_tolerance(
         assert abs(fitted_value) <= tolerance, (
             f"Fitted value {fitted_value} not within absolute tolerance {tolerance} of 0"
         )
-    else:
+    elif true_value > 0:
         lower_bound = true_value * (1 - tolerance)
         upper_bound = true_value * (1 + tolerance)
+        assert lower_bound <= fitted_value <= upper_bound, (
+            f"Fitted value {fitted_value} not within ±{tolerance * 100}% of true value {true_value}. "
+            f"Expected range: [{lower_bound:.6f}, {upper_bound:.6f}]"
+        )
+    else:
+        lower_bound = true_value * (1 + tolerance)
+        upper_bound = true_value * (1 - tolerance)
         assert lower_bound <= fitted_value <= upper_bound, (
             f"Fitted value {fitted_value} not within ±{tolerance * 100}% of true value {true_value}. "
             f"Expected range: [{lower_bound:.6f}, {upper_bound:.6f}]"
@@ -70,7 +77,7 @@ def test_ou_parameter_recovery_standard():
     set_random_seed(48)
 
     # True parameters (using implementation's naming convention)
-    mu_true = 0.1  # mean reversion speed
+    mu_true = 0.5  # mean reversion speed
     theta_true = 0.0  # long-term mean
     sigma_true = 0.1
 
@@ -102,6 +109,123 @@ def test_ou_parameter_recovery_standard():
     assert_within_tolerance(
         theta_fitted_mean, theta_true, tolerance=0.20
     )  # Mean harder to estimate
+    assert_within_tolerance(sigma_fitted_mean, sigma_true)
+
+
+def test_ou_parameter_recovery_non_zero_theta():
+    """
+    Test OU parameter recovery with non-zero theta.
+    """
+    set_random_seed(48)
+
+    # True parameters (using implementation's naming convention)
+    mu_true = 0.5  # mean reversion speed
+    theta_true = 1.0  # long-term mean
+    sigma_true = 0.1
+
+    ou = OrnsteinUhlenbeck(mu=mu_true, theta=theta_true, sigma=sigma_true)
+    simulated_values = ou.simulate(
+        N=N_POINTS, N_simulated=N_SIMULATED, X_0=INITIAL_VALUE
+    )
+
+    # Store the fitted parameters.
+    mu_fitted = np.zeros(N_SIMULATED)
+    theta_fitted = np.zeros(N_SIMULATED)
+    sigma_fitted = np.zeros(N_SIMULATED)
+
+    # Fit the simulated data
+    for i in range(N_SIMULATED):
+        params = OrnsteinUhlenbeck().fit(simulated_values[i, :])
+        mu_fitted[i] = params.mu
+        theta_fitted[i] = params.theta
+        sigma_fitted[i] = params.sigma
+
+    # Calculate the mean of the fitted parameters
+    mu_fitted_mean = np.mean(mu_fitted)
+    theta_fitted_mean = np.mean(theta_fitted)
+    sigma_fitted_mean = np.mean(sigma_fitted)
+
+    # Assert parameters are recovered within tolerance
+    assert_within_tolerance(mu_fitted_mean, mu_true)
+    assert_within_tolerance(theta_fitted_mean, theta_true)
+    assert_within_tolerance(sigma_fitted_mean, sigma_true)
+
+
+def test_ou_parameter_recovery_large_positive_theta():
+    """
+    Test OU parameter recovery with large positive theta.
+    """
+    set_random_seed(48)
+
+    # True parameters (using implementation's naming convention)
+    mu_true = 0.5  # mean reversion speed
+    theta_true = 100.0  # long-term mean
+    sigma_true = 0.1
+
+    ou = OrnsteinUhlenbeck(mu=mu_true, theta=theta_true, sigma=sigma_true)
+    simulated_values = ou.simulate(
+        N=N_POINTS, N_simulated=N_SIMULATED, X_0=INITIAL_VALUE
+    )
+
+    # Store the fitted parameters.
+    mu_fitted = np.zeros(N_SIMULATED)
+    theta_fitted = np.zeros(N_SIMULATED)
+    sigma_fitted = np.zeros(N_SIMULATED)
+
+    # Fit the simulated data
+    for i in range(N_SIMULATED):
+        params = OrnsteinUhlenbeck().fit(simulated_values[i, :])
+        mu_fitted[i] = params.mu
+        theta_fitted[i] = params.theta
+        sigma_fitted[i] = params.sigma
+
+    # Calculate the mean of the fitted parameters
+    mu_fitted_mean = np.mean(mu_fitted)
+    theta_fitted_mean = np.mean(theta_fitted)
+    sigma_fitted_mean = np.mean(sigma_fitted)
+
+    # Assert parameters are recovered within tolerance
+    assert_within_tolerance(mu_fitted_mean, mu_true)
+    assert_within_tolerance(theta_fitted_mean, theta_true)
+    assert_within_tolerance(sigma_fitted_mean, sigma_true)
+
+
+def test_ou_parameter_recovery_large_negative_theta():
+    """
+    Test OU parameter recovery with large negative theta.
+    """
+    set_random_seed(48)
+
+    # True parameters (using implementation's naming convention)
+    mu_true = 0.5  # mean reversion speed
+    theta_true = -100.0  # long-term mean
+    sigma_true = 0.1
+
+    ou = OrnsteinUhlenbeck(mu=mu_true, theta=theta_true, sigma=sigma_true)
+    simulated_values = ou.simulate(
+        N=N_POINTS, N_simulated=N_SIMULATED, X_0=INITIAL_VALUE
+    )
+
+    # Store the fitted parameters.
+    mu_fitted = np.zeros(N_SIMULATED)
+    theta_fitted = np.zeros(N_SIMULATED)
+    sigma_fitted = np.zeros(N_SIMULATED)
+
+    # Fit the simulated data
+    for i in range(N_SIMULATED):
+        params = OrnsteinUhlenbeck().fit(simulated_values[i, :])
+        mu_fitted[i] = params.mu
+        theta_fitted[i] = params.theta
+        sigma_fitted[i] = params.sigma
+
+    # Calculate the mean of the fitted parameters
+    mu_fitted_mean = np.mean(mu_fitted)
+    theta_fitted_mean = np.mean(theta_fitted)
+    sigma_fitted_mean = np.mean(sigma_fitted)
+
+    # Assert parameters are recovered within tolerance
+    assert_within_tolerance(mu_fitted_mean, mu_true)
+    assert_within_tolerance(theta_fitted_mean, theta_true)
     assert_within_tolerance(sigma_fitted_mean, sigma_true)
 
 
