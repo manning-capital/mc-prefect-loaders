@@ -18,7 +18,6 @@ from mc_postgres_db.models import (
 
 sys.path.append(os.path.join(os.path.dirname(__file__), os.pardir))
 
-from mc_postgres_db.testing.utilities import clear_database
 from mc_postgres_db.prefect.asyncio.tasks import get_engine
 
 from data.variables_base import create_global_concurrency_limit
@@ -226,9 +225,6 @@ async def test_pull_new_kraken_data_into_empty_database(fake_data: FakeData):
     # Get the engine.
     engine = await get_engine()
 
-    # Clear the database.
-    clear_database(engine)
-
     # Create the base data.
     (
         _,
@@ -314,9 +310,6 @@ async def test_pull_new_kraken_data_into_empty_database(fake_data: FakeData):
 async def test_pull_new_kraken_data_into_non_empty_database(fake_data: FakeData):
     # Get the engine.
     engine = await get_engine()
-
-    # Clear the database.
-    clear_database(engine)
 
     # Create the base data.
     (
@@ -439,9 +432,6 @@ async def test_pull_new_kraken_data_into_empty_database_with_pair_that_does_not_
 ):
     # Get the engine.
     engine = await get_engine()
-
-    # Clear the database.
-    clear_database(engine)
 
     # Create the base data.
     (

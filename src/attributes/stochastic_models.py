@@ -2,6 +2,92 @@ import numpy as np
 import scipy.optimize as so
 
 
+class GeometricBrownianMotion:
+    """
+    Geometric Brownian Motion process.
+    """
+    X: np.ndarray
+    dt: float
+    mu: float
+    sigma: float
+    
+    def __init__(self, mu: float = None, sigma: float = None):
+        self.mu = mu
+        self.sigma = sigma
+
+    @staticmethod
+    def __log_likelihood(
+        params: tuple[float, float], X: np.ndarray, dt: float
+    ) -> float:
+        """
+        Computes the log likelihood of the GBM process.
+        """
+        mu, sigma = params
+        return -0.5 * np.log(2 * np.pi) - np.log(sigma) - 1 / (2 * len(X)) * np.sum((X - X[0] * np.exp((mu - 0.5 * sigma**2) * dt))**2 / (sigma**2 * dt))
+        
+    def simulate(self, N: int, N_simulated: int, dt: float = None) -> np.ndarray:
+        """
+        Simulates the GBM process.
+        """
+        if dt is None:
+            dt = self.dt
+            
+        # Initialize the simulated process.
+        X_simulated = np.zeros((N_simulated, N))
+        X_simulated[:, 0] = self.theta  # initial value
+        
+        # Simulate the process.
+        for i in range(1, N):
+            X_simulated[:, i] = X_simulated[:, i - 1] * np.exp((self.mu - 0.5 * self.sigma**2) * dt + self.sigma * np.random.normal(0, 1, N_simulated))
+            
+        return X_simulated
+
+    def fit(self, X: np.ndarray, dt: float) -> tuple[float, float, float, float]:
+        """
+        Estimates Geometric Brownian Motion coefficients (µ, σ) of the given array
+        using the Maximum Likelihood Estimation method
+
+        input: X - array-like data to be fit as a GBM process
+        returns: µ, σ, Total Log Likelihood
+        """
+        # Set the parameters.
+        self.X = X
+        self.dt = dt
+        
+        # Set the small bound.
+        small_bound = 1e-9
+        
+        # Set the bounds.
+        bounds = (
+            (small_bound, None),
+            (small_bound, None),
+        )
+        
+        # Initialize the initial values.
+        mu_init = small_bound
+        sigma_init = np.std(self.X)
+
+        # Minimize the log likelihood.
+        result = so.minimize(
+            GeometricBrownianMotion.__log_likelihood,
+            (mu_init, sigma_init),
+            args=(self.X, self.dt),
+            method="L-BFGS-B",
+            bounds=bounds,
+            tol=1e-10,
+        )
+
+        # Get the parameters.
+        mu, sigma = result.x
+        max_log_likelihood = -result.fun  # undo negation from __compute_log_likelihood
+
+        # Set the parameters.
+        self.mu = mu
+        self.sigma = sigma
+
+        # Return the parameters.
+        return mu, sigma, max_log_likelihood
+
 class OrnsteinUhlenbeck:
     """
     Ornstein-Uhlenbeck process.

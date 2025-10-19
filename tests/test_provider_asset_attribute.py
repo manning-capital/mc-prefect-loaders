@@ -11,22 +11,19 @@ from sqlalchemy.orm import Session
 
 sys.path.append(os.path.join(os.path.dirname(__file__), os.pardir))
 
-from mc_postgres_db.testing.utilities import clear_database
 from mc_postgres_db.prefect.asyncio.tasks import set_data, get_engine
 
 from tests.utils import sample_asset_data, sample_provider_data
 from src.attributes.provider_asset_attribute_flows import (
     refresh_provider_asset_attribute_data,
 )
+from src.attributes.stochastic_models import OrnsteinUhlenbeck
 
 
 @pytest.mark.asyncio
 async def test_creation_of_members_through_provider_asset_group_orm():
     # Get the engine.
     engine = await get_engine()
-
-    # Clear the database.
-    clear_database(engine)
 
     # Create the provider and asset data.
     _, kraken_provider = await sample_provider_data(engine)
@@ -125,9 +122,6 @@ async def test_refresh_of_provider_asset_attribute_data():
     # Get the engine.
     engine = await get_engine()
 
-    # Clear the database.
-    clear_database(engine)
-
     # Create the provider and asset data.
     _, kraken_provider = await sample_provider_data(engine)
     (
@@ -149,6 +143,17 @@ async def test_refresh_of_provider_asset_attribute_data():
         session.add(pairs_trading_asset_group_type)
         session.commit()
         session.refresh(pairs_trading_asset_group_type)
+
+    # Initialize the parameters for Ornstein-Uhlenbeck process including the linear fit between two assets.
+    alpha = 850
+    beta = 4.5
+    mu = 0.0001
+    sigma = 0.01
+    theta = 0.0001
+    S_eth_to_usd = 10000
+    S_btc_to_usd = alpha + beta * S_eth_to_usd
+    ou_process = OrnsteinUhlenbeck(mu=mu, theta=theta, sigma=sigma)
+    X = ou_process.simulate(N=len(tf), N_simulated=1, dt=DELTA_T)
 
     # Create provider asset market data over 30 days.
     mu = 0.0001

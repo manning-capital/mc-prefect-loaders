@@ -14,7 +14,6 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from sqlalchemy.engine import Engine
 from mc_postgres_db.models import Provider, ContentType, ProviderType, ProviderContent
-from mc_postgres_db.testing.utilities import clear_database
 from mc_postgres_db.prefect.asyncio.tasks import get_engine
 
 from src.content.coin_desk_content_flows import pull_coindesk_news_content
@@ -59,7 +58,6 @@ def setup_base_data(engine: Engine):
 async def test_empty_database_and_one_new_provider_and_content():
     # Clear the database.
     engine = await get_engine()
-    clear_database(engine)
 
     # Setup the base data.
     _, _, provider_id = setup_base_data(engine)
@@ -117,7 +115,6 @@ async def test_empty_database_and_one_new_provider_and_content():
 async def test_empty_database_with_multiple_new_providers_and_content():
     # Clear the database.
     engine = await get_engine()
-    clear_database(engine)
 
     # Setup the base data.
     _, _, provider_id = setup_base_data(engine)
@@ -186,7 +183,6 @@ async def test_empty_database_with_multiple_new_providers_and_content():
 async def test_one_existing_provider_and_new_content():
     # Clear the database.
     engine = await get_engine()
-    clear_database(engine)
 
     # Setup the base data.
     provider_type_id, _, provider_id = setup_base_data(engine)
@@ -268,7 +264,6 @@ async def test_one_existing_provider_and_new_content():
 async def test_multiple_existing_and_new_providers():
     # Clear the database.
     engine = await get_engine()
-    clear_database(engine)
 
     # Setup the base data.
     provider_type_id, _, provider_id = setup_base_data(engine)
@@ -349,7 +344,6 @@ async def test_multiple_existing_and_new_providers():
 async def test_empty_content_in_database_and_new_content():
     # Clear the database.
     engine = await get_engine()
-    clear_database(engine)
 
     # Setup the base data.
     provider_type_id, _, provider_id = setup_base_data(engine)
@@ -418,7 +412,6 @@ async def test_empty_content_in_database_and_new_content():
 async def test_multiple_existing_content_with_updates():
     # Clear the database.
     engine = await get_engine()
-    clear_database(engine)
 
     # Setup the base data.
     provider_type_id, content_type_id, provider_id = setup_base_data(engine)
@@ -529,7 +522,6 @@ async def test_multiple_existing_content_with_updates():
 async def test_multiple_existing_content_with_updates_and_new_content():
     # Clear the database.
     engine = await get_engine()
-    clear_database(engine)
 
     # Setup the base data.
     provider_type_id, content_type_id, provider_id = setup_base_data(engine)

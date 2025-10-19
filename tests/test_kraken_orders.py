@@ -20,7 +20,6 @@ from mc_postgres_db.models import (
     ProviderAsset,
     ProviderAssetOrder,
 )
-from mc_postgres_db.testing.utilities import clear_database
 from mc_postgres_db.prefect.asyncio.tasks import get_engine as get_engine_async
 
 from src.order.kraken_trade_book_flows import pull_kraken_orders
@@ -187,7 +186,6 @@ async def test_pull_when_both_database_and_kraken_is_empty(
 ):
     # Clear any existing data in the database.
     engine = await get_engine_async()
-    clear_database(engine)
 
     # Create the sample data.
     (
@@ -213,7 +211,6 @@ async def test_pull_when_database_is_empty(
 ):
     # Clear any existing data in the mock database
     engine = await get_engine_async()
-    clear_database(engine)
 
     # Create the sample data.
     (
@@ -293,7 +290,6 @@ async def test_pull_when_database_has_an_existing_record(
 ):
     # Clear any existing data in the database.
     engine = await get_engine_async()
-    clear_database(engine)
 
     # Create the sample data.
     (
@@ -384,7 +380,6 @@ async def test_pull_when_database_is_empty_and_source_has_multiple_records(
 ):
     # Clear any existing data in the database.
     engine = await get_engine_async()
-    clear_database(engine)
 
     # Create the sample data.
     (
@@ -461,7 +456,6 @@ async def test_pull_when_database_is_empty_and_source_has_multiple_from_and_to_a
 ):
     # Clear any existing data in the mock database
     engine = await get_engine_async()
-    clear_database(engine)
 
     # Create the sample data.
     (
@@ -577,7 +571,6 @@ async def test_pull_when_database_has_one_duplicate_and_multiple_non_duplicates(
 ):
     # Clear any existing data in the mock database
     engine = await get_engine_async()
-    clear_database(engine)
 
     # Create the sample data.
     (
@@ -681,7 +674,6 @@ async def test_pull_when_database_has_one_duplicate_and_source_has_from_and_to_a
 ):
     # Clear any existing data in the mock database
     engine = await get_engine_async()
-    clear_database(engine)
 
     # Create the sample data.
     (
