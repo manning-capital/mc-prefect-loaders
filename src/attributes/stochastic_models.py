@@ -1,16 +1,19 @@
 import numpy as np
 import scipy.optimize as so
 
+DELTA_T = 1 / (24 * 60 * 60)  # 1 divided by the number of seconds in a day
+
 
 class GeometricBrownianMotion:
     """
     Geometric Brownian Motion process.
     """
+
     X: np.ndarray
     dt: float
     mu: float
     sigma: float
-    
+
     def __init__(self, mu: float = None, sigma: float = None):
         self.mu = mu
         self.sigma = sigma
@@ -54,29 +57,33 @@ class GeometricBrownianMotion:
         # Calculate the log-likelihood terms
         term1 = -0.5 * n * np.log(2 * np.pi)
         term2 = -0.5 * n * np.log(sigma**2 * dt)
-        term3 = -np.sum((log_returns - expected_mean)**2) / (2 * sigma**2 * dt)
+        term3 = -np.sum((log_returns - expected_mean) ** 2) / (2 * sigma**2 * dt)
 
         log_likelihood = term1 + term2 + term3
 
         # For minimization, return the negative log-likelihood
         return -log_likelihood
 
-
-    def simulate(self, N: int, N_simulated: int, X_0: float, dt: float = None) -> np.ndarray:
+    def simulate(
+        self, N: int, N_simulated: int, X_0: float, dt: float = None
+    ) -> np.ndarray:
         """
         Simulates the GBM process.
         """
         if dt is None:
             dt = self.dt
-            
+
         # Initialize the simulated process.
         X_simulated = np.zeros((N_simulated, N))
         X_simulated[:, 0] = X_0  # initial value
-        
+
         # Simulate the process.
         for i in range(1, N):
-            X_simulated[:, i] = X_simulated[:, i - 1] * np.exp((self.mu - 0.5 * self.sigma**2) * dt + self.sigma * np.sqrt(dt) * np.random.normal(0, 1, N_simulated))
-            
+            X_simulated[:, i] = X_simulated[:, i - 1] * np.exp(
+                (self.mu - 0.5 * self.sigma**2) * dt
+                + self.sigma * np.sqrt(dt) * np.random.normal(0, 1, N_simulated)
+            )
+
         return X_simulated
 
     def fit(self, X: np.ndarray, dt: float) -> tuple[float, float, float, float]:
@@ -90,10 +97,10 @@ class GeometricBrownianMotion:
         # Set the parameters.
         self.X = X
         self.dt = dt
-        
+
         # Set the small bound.
         small_bound = 1e-9
-        
+
         # Set the bounds.
         bounds = (
             (small_bound, None),
@@ -125,6 +132,7 @@ class GeometricBrownianMotion:
 
         # Return the parameters.
         return mu, sigma, max_log_likelihood
+
 
 class OrnsteinUhlenbeck:
     """
@@ -232,7 +240,9 @@ class OrnsteinUhlenbeck:
         # Return the parameters.
         return mu, theta, sigma, max_log_likelihood
 
-    def simulate(self, N: int, N_simulated: int, X_0: float, dt: float = None) -> np.ndarray:
+    def simulate(
+        self, N: int, N_simulated: int, X_0: float, dt: float = None
+    ) -> np.ndarray:
         """
         Simulates the OU process.
         """

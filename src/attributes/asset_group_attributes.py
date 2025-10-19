@@ -18,9 +18,7 @@ from statsmodels.tsa.stattools import coint
 from statsmodels.regression.linear_model import OLS
 
 from src.attributes.abstract import AbstractAssetGroupType
-from src.attributes.stochastic_models import OrnsteinUhlenbeck
-
-DELTA_T = 1 / (24 * 60 * 60)  # 1 divided by the number of seconds in a day
+from src.attributes.stochastic_models import DELTA_T, OrnsteinUhlenbeck
 
 
 class StatisticalPairsTrading(AbstractAssetGroupType):
