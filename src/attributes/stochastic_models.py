@@ -58,10 +58,26 @@ class StochasticModel(ABC):
     Base class for stochastic models.
     """
 
-    params: StochasticModelParams
+    __params: StochasticModelParams
 
-    def __init__(self, params: StochasticModelParams):
-        self.params = params
+    def __init__(self, params: StochasticModelParams = None):
+        self.__params = params
+
+    @property
+    def params(self) -> StochasticModelParams:
+        """
+        Get the parameters of the model.
+        """
+        if self.__params is None:
+            raise ValueError("Parameters are not set for the model.")
+        return self.__params
+
+    @params.setter
+    def params(self, params: StochasticModelParams):
+        """
+        Set the parameters of the model.
+        """
+        self.__params = params
 
     @abstractmethod
     def log_likelihood(self, X: np.ndarray) -> float:
