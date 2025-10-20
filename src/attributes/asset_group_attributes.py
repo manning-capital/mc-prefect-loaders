@@ -171,29 +171,29 @@ class StatisticalPairsTrading(AbstractAssetGroupType):
         timestamp_anchor_array: np.ndarray[dt.datetime] = np.array(
             anchor_timestamps, dtype=dt.datetime
         )
-        beta_array: np.ndarray[float] = np.full(
+        beta_array: np.ndarray[np.float64 | np.nan] = np.full(
             len(anchor_timestamps), np.nan, dtype=np.float64
         )
-        alpha_array: np.ndarray[float] = np.full(
+        alpha_array: np.ndarray[np.float64 | np.nan] = np.full(
             len(anchor_timestamps), np.nan, dtype=np.float64
         )
-        mse_array: np.ndarray[float] = np.full(
+        mse_array: np.ndarray[np.float64 | np.nan] = np.full(
             len(anchor_timestamps), np.nan, dtype=np.float64
         )
-        r_squared_array: np.ndarray[float] = np.full(
+        r_squared_array: np.ndarray[np.float64 | np.nan] = np.full(
             len(anchor_timestamps), np.nan, dtype=np.float64
         )
-        r_squared_adj_array: np.ndarray[float] = np.full(
+        r_squared_adj_array: np.ndarray[np.float64 | np.nan] = np.full(
             len(anchor_timestamps), np.nan, dtype=np.float64
         )
-        theta_array: np.ndarray[float] = np.full(
+        theta_array: np.ndarray[np.float64 | np.nan] = np.full(
             len(anchor_timestamps), np.nan, dtype=np.float64
         )
-        mu_array: np.ndarray[float] = np.full(len(anchor_timestamps), np.nan, dtype=np.float64)
-        sigma_array: np.ndarray[float] = np.full(
+        mu_array: np.ndarray[np.float64 | np.nan] = np.full(len(anchor_timestamps), np.nan, dtype=np.float64)
+        sigma_array: np.ndarray[np.float64 | np.nan] = np.full(
             len(anchor_timestamps), np.nan, dtype=np.float64
         )
-        p_value_array: np.ndarray[float] = np.full(
+        p_value_array: np.ndarray[np.float64 | np.nan] = np.full(
             len(anchor_timestamps), np.nan, dtype=np.float64
         )
 
