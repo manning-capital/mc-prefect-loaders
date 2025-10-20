@@ -74,7 +74,10 @@ async def refresh_by_asset_group_type(
             )
             attribute_results = attribute_results.with_columns(
                 pl.lit(provider_asset_group_id, dtype=pl.Int64).alias(
-                    "provider_asset_group_id"
+                    models.ProviderAssetGroupAttribute.provider_asset_group_id.name
+                ),
+                pl.lit(window.seconds, dtype=pl.Int64).alias(
+                    models.ProviderAssetGroupAttribute.loopback_window_seconds.name
                 ),
             )
 
