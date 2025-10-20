@@ -216,10 +216,10 @@ class StatisticalPairsTrading(AbstractAssetGroupType):
             p_value_array.append(cointegration_result[1])
 
             # Fit the residuals to the Ornstein-Uhlenbeck process.
-            theta, mu, sigma, _ = OrnsteinUhlenbeck().fit(residuals, DELTA_T)
-            theta_array.append(theta)
-            mu_array.append(mu)
-            sigma_array.append(sigma)
+            ou_params = OrnsteinUhlenbeck().fit(residuals, DELTA_T)
+            theta_array.append(ou_params.theta)
+            mu_array.append(ou_params.mu)
+            sigma_array.append(ou_params.sigma)
 
         # Return the provider asset group data dataframe.
         return pl.DataFrame(
