@@ -59,6 +59,10 @@ class StatisticalPairsTrading(AbstractAssetGroupType):
         return dt.timedelta(hours=1)
 
     @property
+    def resolution(self) -> dt.timedelta:
+        return dt.timedelta(minutes=1)
+
+    @property
     def maximum_provider_asset_market_pairs(self) -> int:
         return 5000
 
