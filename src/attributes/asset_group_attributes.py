@@ -168,63 +168,96 @@ class StatisticalPairsTrading(AbstractAssetGroupType):
             current_time = current_time + step
 
         # Initialize the arrays.
-        timestamp_array: list[dt.datetime] = []
-        beta_array: list[float] = []
-        alpha_array: list[float] = []
-        mse_array: list[float] = []
-        r_squared_array: list[float] = []
-        r_squared_adj_array: list[float] = []
-        theta_array: list[float] = []
-        mu_array: list[float] = []
-        sigma_array: list[float] = []
-        p_value_array: list[float] = []
+        timestamp_anchor_array: np.ndarray = np.array(
+            anchor_timestamps, dtype=np.datetime64
+        )
+        beta_array: np.ndarray = np.full(
+            len(anchor_timestamps), np.nan, dtype=np.float64
+        )
+        alpha_array: np.ndarray = np.full(
+            len(anchor_timestamps), np.nan, dtype=np.float64
+        )
+        mse_array: np.ndarray = np.full(
+            len(anchor_timestamps), np.nan, dtype=np.float64
+        )
+        r_squared_array: np.ndarray = np.full(
+            len(anchor_timestamps), np.nan, dtype=np.float64
+        )
+        r_squared_adj_array: np.ndarray = np.full(
+            len(anchor_timestamps), np.nan, dtype=np.float64
+        )
+        theta_array: np.ndarray = np.full(
+            len(anchor_timestamps), np.nan, dtype=np.float64
+        )
+        mu_array: np.ndarray = np.full(len(anchor_timestamps), np.nan, dtype=np.float64)
+        sigma_array: np.ndarray = np.full(
+            len(anchor_timestamps), np.nan, dtype=np.float64
+        )
+        p_value_array: np.ndarray = np.full(
+            len(anchor_timestamps), np.nan, dtype=np.float64
+        )
 
         # Perform a linear regression over the window and step size.
         for i, anchor_timestamp in enumerate(anchor_timestamps):
-            # Get the window of data.
-            group_market_df_window = group_market_df.filter(
-                pl.col("timestamp") >= anchor_timestamp - window,
-                pl.col("timestamp") <= anchor_timestamp,
-            )
+            try:
+                # Get the window of data.
+                group_market_df_window = group_market_df.filter(
+                    pl.col("timestamp") >= anchor_timestamp - window,
+                    pl.col("timestamp") <= anchor_timestamp,
+                )
 
-            # Get the close columns.
-            close_1 = group_market_df_window["close_1"].to_numpy()
-            close_2 = group_market_df_window["close_2"].to_numpy()
+                # Get the close columns.
+                close_1 = group_market_df_window["close_1"].to_numpy()
+                close_2 = group_market_df_window["close_2"].to_numpy()
 
-            # Perform a linear regression over the window of data.
-            X = sm.add_constant(close_1)
-            y = close_2
-            linear_regression = OLS(y, X).fit()
+                # Run the cointegration test.
+                cointegration_result = coint(close_1, close_2)
+                p_value_array[i] = cointegration_result[1]
 
-            # Get the slope and intercept of the linear regression.
-            timestamp_array.append(anchor_timestamp)
-            beta_array.append(linear_regression.params[1])
-            alpha_array.append(linear_regression.params[0])
-            residuals = linear_regression.resid
+                # Perform a linear regression over the window of data.
+                X = sm.add_constant(close_1)
+                y = close_2
+                linear_regression = OLS(y, X).fit()
 
-            # Calculate the mean squared error of the residuals.
-            mse_array.append(linear_regression.mse_total)
+                # Get the slope and intercept of the linear regression.
+                beta_array[i] = linear_regression.params[1]
+                alpha_array[i] = linear_regression.params[0]
+                residuals = linear_regression.resid
 
-            # Calculate the R-squared of the linear regression.
-            r_squared_array.append(linear_regression.rsquared)
+                # Calculate the mean squared error of the residuals.
+                mse_array[i] = linear_regression.mse_total
 
-            # Calculate the adjusted R-squared of the linear regression.
-            r_squared_adj_array.append(linear_regression.rsquared_adj)
+                # Calculate the R-squared of the linear regression.
+                r_squared_array[i] = linear_regression.rsquared
 
-            # Run the cointegration test.
-            cointegration_result = coint(close_1, close_2)
-            p_value_array.append(cointegration_result[1])
+                # Calculate the adjusted R-squared of the linear regression.
+                r_squared_adj_array[i] = linear_regression.rsquared_adj
 
-            # Fit the residuals to the Ornstein-Uhlenbeck process.
-            ou_params = OrnsteinUhlenbeck().fit(residuals)
-            theta_array.append(ou_params.theta)
-            mu_array.append(ou_params.mu)
-            sigma_array.append(ou_params.sigma)
+                # Fit the residuals to the Ornstein-Uhlenbeck process.
+                ou_params = OrnsteinUhlenbeck().fit(residuals)
+                theta_array[i] = ou_params.theta
+                mu_array[i] = ou_params.mu
+                sigma_array[i] = ou_params.sigma
+
+            except Exception as e:
+                print(
+                    f"Error fitting the residuals to the Ornstein-Uhlenbeck process for anchor timestamp {anchor_timestamp}: {e}"
+                )
+                beta_array[i] = np.nan
+                alpha_array[i] = np.nan
+                mse_array[i] = np.nan
+                r_squared_array[i] = np.nan
+                r_squared_adj_array[i] = np.nan
+                theta_array[i] = np.nan
+                mu_array[i] = np.nan
+                sigma_array[i] = np.nan
+                p_value_array[i] = np.nan
+                continue
 
         # Return the provider asset group data dataframe.
         return pl.DataFrame(
             {
-                models.ProviderAssetGroupAttribute.timestamp.name: timestamp_array,
+                models.ProviderAssetGroupAttribute.timestamp.name: timestamp_anchor_array,
                 models.ProviderAssetGroupAttribute.linear_fit_beta.name: beta_array,
                 models.ProviderAssetGroupAttribute.linear_fit_alpha.name: alpha_array,
                 models.ProviderAssetGroupAttribute.linear_fit_mse.name: mse_array,
