@@ -36,6 +36,15 @@ class AbstractAssetGroupType(ABC):
 
     @property
     @abstractmethod
+    def resolution(self) -> dt.timedelta:
+        """
+        Get the time resolution for the calculation frame.
+        For example, dt.timedelta(minutes=1) for a 1 minute resolution.
+        """
+        pass
+
+    @property
+    @abstractmethod
     def maximum_provider_asset_market_pairs(self) -> int:
         """
         Get the maximum number of provider asset market pairs for the asset group type.
@@ -182,7 +191,7 @@ class AbstractAssetGroupType(ABC):
         ceil_end = end_naive.replace(second=0, microsecond=0)
         datetime_grid = pl.DataFrame().with_columns(
             pl.datetime_range(
-                floor_start, ceil_end, interval=dt.timedelta(minutes=1), eager=True
+                floor_start, ceil_end, interval=self.resolution, eager=True
             ).alias("timestamp")
         )
 
