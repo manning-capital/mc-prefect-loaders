@@ -213,7 +213,7 @@ class GeometricBrownianMotion(StochasticModel):
         return self.params
 
 
-class OrnsteinUhlenbeck:
+class OrnsteinUhlenbeck(StochasticModel):
     """
     Ornstein-Uhlenbeck process.
 
