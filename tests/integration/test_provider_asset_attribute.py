@@ -18,6 +18,7 @@ from src.attributes.stochastic_models import (
     GBMParams,
     OrnsteinUhlenbeck,
     GeometricBrownianMotion,
+    OUParams,
 )
 from src.attributes.provider_asset_attribute_flows import (
     refresh_provider_asset_attribute_data,
@@ -148,25 +149,7 @@ async def test_refresh_of_provider_asset_attribute_data():
         session.commit()
         session.refresh(pairs_trading_asset_group_type)
 
-    # Create the first asset to be a geometric brownian motion.
-    gb_process = GeometricBrownianMotion(params=GBMParams(mu=mu, sigma=sigma))
-    X = gb_process.simulate(N=len(tf), N_simulated=1)
-
-    # Initialize the parameters for Ornstein-Uhlenbeck process including the linear fit between two assets.
-    alpha = 850
-    beta = 4.5
-    mu = 0.0001
-    sigma = 0.01
-    theta = 0.0001
-    S_eth_to_usd = 10000
-    S_btc_to_usd = alpha + beta * S_eth_to_usd
-    ou_process = OrnsteinUhlenbeck(mu=mu, theta=theta, sigma=sigma)
-    X = ou_process.simulate(N=len(tf), N_simulated=1)
-
-    # Create provider asset market data over 30 days.
-    mu = 0.0001
-    sigma = 0.01
-    S_btc_to_usd = 10000
+    # Create the time frame.
     start_time = (dt.datetime.now()).replace(hour=12, minute=0, second=0, microsecond=0)
     end_time = start_time + dt.timedelta(days=60)
     tf = pd.date_range(
@@ -174,7 +157,25 @@ async def test_refresh_of_provider_asset_attribute_data():
         end=end_time,
         freq="1min",
     )
-    delta_t = 1 / len(tf)
+
+    # Create the first asset to be a geometric brownian motion.
+    drift = 0.01
+    volatility = 0.05
+    S_initial_eth_to_usd = 10000
+    gb_process = GeometricBrownianMotion(params=GBMParams(mu=drift, sigma=volatility))
+    S_eth_to_usd = gb_process.simulate(N=len(tf), N_simulated=1, X_0=S_initial_eth_to_usd)[0]
+
+    # Initialize the parameters for Ornstein-Uhlenbeck process including the linear fit between two assets.
+    alpha = 850
+    beta = 4.5
+    mu = 0.02
+    sigma = 0.05
+    theta = 0.0
+    ou_process = OrnsteinUhlenbeck(OUParams(mu=mu, theta=theta, sigma=sigma))
+    X_spread = ou_process.simulate(N=len(tf), N_simulated=1, X_0=theta)[0]
+    S_btc_to_usd = alpha + beta * S_eth_to_usd + X_spread
+
+    # Create provider asset market data over 30 days.
     df_btc_to_usd = pd.DataFrame(
         {
             "timestamp": tf,
@@ -182,15 +183,8 @@ async def test_refresh_of_provider_asset_attribute_data():
             "from_asset_id": [usd_asset.id for _ in tf],
             "to_asset_id": [btc_asset.id for _ in tf],
             "close": S_btc_to_usd
-            * np.exp(
-                (mu - 0.5 * sigma**2) * delta_t
-                + sigma * np.random.standard_normal(len(tf))
-            ),
         }
     )
-    mu = 0.0001
-    sigma = 0.01
-    S_eth_to_usd = 1000
     df_eth_to_usd = pd.DataFrame(
         {
             "timestamp": tf,
@@ -198,10 +192,6 @@ async def test_refresh_of_provider_asset_attribute_data():
             "from_asset_id": [usd_asset.id for _ in tf],
             "to_asset_id": [eth_asset.id for _ in tf],
             "close": S_eth_to_usd
-            * np.exp(
-                (mu - 0.5 * sigma**2) * delta_t
-                + sigma * np.random.standard_normal(len(tf))
-            ),
         }
     )
     df = pd.concat([df_btc_to_usd, df_eth_to_usd])
