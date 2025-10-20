@@ -18,7 +18,7 @@ from statsmodels.tsa.stattools import coint
 from statsmodels.regression.linear_model import OLS
 
 from src.attributes.abstract import AbstractAssetGroupType
-from src.attributes.stochastic_models import DELTA_T, OrnsteinUhlenbeck
+from src.attributes.stochastic_models import OrnsteinUhlenbeck
 
 
 class StatisticalPairsTrading(AbstractAssetGroupType):

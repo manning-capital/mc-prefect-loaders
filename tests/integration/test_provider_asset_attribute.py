@@ -1,8 +1,8 @@
 import os
 import sys
 import datetime as dt
+from unittest.mock import patch
 
-import numpy as np
 import pandas as pd
 import pytest
 import mc_postgres_db.models as models
@@ -15,10 +15,10 @@ from mc_postgres_db.prefect.asyncio.tasks import set_data, get_engine
 
 from tests.utils import sample_asset_data, sample_provider_data
 from src.attributes.stochastic_models import (
+    OUParams,
     GBMParams,
     OrnsteinUhlenbeck,
     GeometricBrownianMotion,
-    OUParams,
 )
 from src.attributes.provider_asset_attribute_flows import (
     refresh_provider_asset_attribute_data,
@@ -124,88 +124,99 @@ async def test_creation_of_members_through_provider_asset_group_orm():
 
 @pytest.mark.asyncio
 async def test_refresh_of_provider_asset_attribute_data():
-    # Get the engine.
-    engine = await get_engine()
+    # Patch the step property to use 1 day instead of 1 hour for testing
+    with patch(
+        "src.attributes.asset_group_attributes.StatisticalPairsTrading.step",
+        property(lambda self: dt.timedelta(days=1)),
+    ):
+        # Get the engine.
+        engine = await get_engine()
 
-    # Create the provider and asset data.
-    _, kraken_provider = await sample_provider_data(engine)
-    (
-        _,
-        _,
-        btc_asset,
-        eth_asset,
-        usd_asset,
-    ) = await sample_asset_data(engine)
+        # Create the provider and asset data.
+        _, kraken_provider = await sample_provider_data(engine)
+        (
+            _,
+            _,
+            btc_asset,
+            eth_asset,
+            usd_asset,
+        ) = await sample_asset_data(engine)
 
-    # Create the pairs trading asset group type.
-    with Session(engine) as session:
-        pairs_trading_asset_group_type = models.AssetGroupType(
-            symbol="STATISTICAL_PAIRS_TRADING",
-            name="Statistical Pairs Trading",
-            description="Group type for pairs trading attributes like the cointegration and hedge ratio.",
-            is_active=True,
+        # Create the pairs trading asset group type.
+        with Session(engine) as session:
+            pairs_trading_asset_group_type = models.AssetGroupType(
+                symbol="STATISTICAL_PAIRS_TRADING",
+                name="Statistical Pairs Trading",
+                description="Group type for pairs trading attributes like the cointegration and hedge ratio.",
+                is_active=True,
+            )
+            session.add(pairs_trading_asset_group_type)
+            session.commit()
+            session.refresh(pairs_trading_asset_group_type)
+
+        # Create the time frame.
+        start_time = (dt.datetime.now()).replace(
+            hour=12, minute=0, second=0, microsecond=0
         )
-        session.add(pairs_trading_asset_group_type)
-        session.commit()
-        session.refresh(pairs_trading_asset_group_type)
-
-    # Create the time frame.
-    start_time = (dt.datetime.now()).replace(hour=12, minute=0, second=0, microsecond=0)
-    end_time = start_time + dt.timedelta(days=60)
-    tf = pd.date_range(
-        start=start_time,
-        end=end_time,
-        freq="1min",
-    )
-
-    # Create the first asset to be a geometric brownian motion.
-    drift = 0.01
-    volatility = 0.05
-    S_initial_eth_to_usd = 10000
-    gb_process = GeometricBrownianMotion(params=GBMParams(mu=drift, sigma=volatility))
-    S_eth_to_usd = gb_process.simulate(N=len(tf), N_simulated=1, X_0=S_initial_eth_to_usd)[0]
-
-    # Initialize the parameters for Ornstein-Uhlenbeck process including the linear fit between two assets.
-    alpha = 850
-    beta = 4.5
-    mu = 0.02
-    sigma = 0.05
-    theta = 0.0
-    ou_process = OrnsteinUhlenbeck(params=OUParams(mu=mu, theta=theta, sigma=sigma))
-    X_spread = ou_process.simulate(N=len(tf), N_simulated=1, X_0=theta)[0]
-    S_btc_to_usd = alpha + beta * S_eth_to_usd + X_spread
-
-    # Create provider asset market data over 30 days.
-    df_btc_to_usd = pd.DataFrame(
-        {
-            "timestamp": tf,
-            "provider_id": [kraken_provider.id for _ in tf],
-            "from_asset_id": [usd_asset.id for _ in tf],
-            "to_asset_id": [btc_asset.id for _ in tf],
-            "close": S_btc_to_usd
-        }
-    )
-    df_eth_to_usd = pd.DataFrame(
-        {
-            "timestamp": tf,
-            "provider_id": [kraken_provider.id for _ in tf],
-            "from_asset_id": [usd_asset.id for _ in tf],
-            "to_asset_id": [eth_asset.id for _ in tf],
-            "close": S_eth_to_usd
-        }
-    )
-    df = pd.concat([df_btc_to_usd, df_eth_to_usd])
-
-    # Set the data.
-    await set_data(models.ProviderAssetMarket.__tablename__, df)
-
-    # Create the provider asset group.
-    await refresh_provider_asset_attribute_data(start=start_time, end=end_time)
-
-    # Check if the provider asset group was created.
-    with Session(engine) as session:
-        provider_asset_group = (
-            session.execute(select(models.ProviderAssetGroup)).scalars().all()
+        end_time = start_time + dt.timedelta(days=60)
+        tf = pd.date_range(
+            start=start_time,
+            end=end_time,
+            freq="1min",
         )
-        assert provider_asset_group is not None
-        assert len(provider_asset_group.members) == 2
+
+        # Create the first asset to be a geometric brownian motion.
+        drift = 0.01
+        volatility = 0.05
+        S_initial_eth_to_usd = 10000
+        gb_process = GeometricBrownianMotion(
+            params=GBMParams(mu=drift, sigma=volatility)
+        )
+        S_eth_to_usd = gb_process.simulate(
+            N=len(tf), N_simulated=1, X_0=S_initial_eth_to_usd
+        )[0]
+
+        # Initialize the parameters for Ornstein-Uhlenbeck process including the linear fit between two assets.
+        alpha = 850
+        beta = 4.5
+        mu = 0.02
+        sigma = 0.05
+        theta = 0.0
+        ou_process = OrnsteinUhlenbeck(params=OUParams(mu=mu, theta=theta, sigma=sigma))
+        X_spread = ou_process.simulate(N=len(tf), N_simulated=1, X_0=theta)[0]
+        S_btc_to_usd = alpha + beta * S_eth_to_usd + X_spread
+
+        # Create provider asset market data over 30 days.
+        df_btc_to_usd = pd.DataFrame(
+            {
+                "timestamp": tf,
+                "provider_id": [kraken_provider.id for _ in tf],
+                "from_asset_id": [usd_asset.id for _ in tf],
+                "to_asset_id": [btc_asset.id for _ in tf],
+                "close": S_btc_to_usd,
+            }
+        )
+        df_eth_to_usd = pd.DataFrame(
+            {
+                "timestamp": tf,
+                "provider_id": [kraken_provider.id for _ in tf],
+                "from_asset_id": [usd_asset.id for _ in tf],
+                "to_asset_id": [eth_asset.id for _ in tf],
+                "close": S_eth_to_usd,
+            }
+        )
+        df = pd.concat([df_btc_to_usd, df_eth_to_usd])
+
+        # Set the data.
+        await set_data(models.ProviderAssetMarket.__tablename__, df)
+
+        # Create the provider asset group.
+        await refresh_provider_asset_attribute_data(start=start_time, end=end_time)
+
+        # Check if the provider asset group was created.
+        with Session(engine) as session:
+            provider_asset_group = (
+                session.execute(select(models.ProviderAssetGroup)).scalars().all()
+            )
+            assert provider_asset_group is not None
+            assert len(provider_asset_group.members) == 2

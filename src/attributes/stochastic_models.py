@@ -37,6 +37,7 @@ class GBMParams(StochasticModelParams):
     sigma : float
         Volatility parameter (σ) in the SDE: dS = mu * S * dt + sigma * S * dW
     """
+
     mu: float  # drift parameter
     sigma: float  # volatility parameter
 
@@ -65,6 +66,7 @@ class OUParams(StochasticModelParams):
     sigma : float
         Brownian motion scale (σ) in the SDE: dX = mu * (theta - X) dt + sigma * dW
     """
+
     mu: float  # mean reversion parameter
     theta: float  # asymptotic mean
     sigma: float  # Brownian motion scale (standard deviation)
