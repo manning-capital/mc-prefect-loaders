@@ -79,12 +79,11 @@ async def refresh_by_asset_group_type(
             )
 
             # Drop nulls before setting the data.
-            attribute_results = attribute_results.drop_nulls()
+            to_set_data = attribute_results.drop_nulls().to_pandas()
 
             # Set the data.
             await set_data(
-                models.ProviderAssetGroupAttribute.__tablename__,
-                attribute_results.to_pandas(),
+                models.ProviderAssetGroupAttribute.__tablename__, to_set_data
             )
 
 
