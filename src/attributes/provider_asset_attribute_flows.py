@@ -2,10 +2,11 @@ import datetime as dt
 from typing import Optional
 
 import polars as pl
+import mc_postgres_db.models as models
 from prefect import flow, task, get_run_logger
 from prefect_dask import DaskTaskRunner
 from prefect.cache_policies import NO_CACHE
-from mc_postgres_db.prefect.asyncio.tasks import get_engine
+from mc_postgres_db.prefect.asyncio.tasks import set_data, get_engine
 
 from src.attributes.abstract import AbstractAssetGroupType
 from src.attributes.asset_group_attributes import StatisticalPairsTrading
@@ -70,7 +71,14 @@ async def refresh_by_asset_group_type(
                 step=asset_group_type.step,
                 group_market_df=data,
             )
-            logger.info(f"Attribute results: {attribute_results}")
+            attribute_results = attribute_results.with_columns(
+                pl.lit(name[0]).alias("provider_asset_group_id"),
+            )
+
+            # Set the data.
+            await set_data(
+                models.ProviderAssetGroupAttribute.__tablename__, attribute_results
+            )
 
 
 @flow(
