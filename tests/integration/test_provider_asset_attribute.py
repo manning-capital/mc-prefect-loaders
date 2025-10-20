@@ -4,7 +4,6 @@ import datetime as dt
 from unittest.mock import patch
 
 import pandas as pd
-import polars as pl
 import pytest
 import mc_postgres_db.models as models
 from sqlalchemy import select
@@ -128,7 +127,7 @@ async def test_creation_of_members_through_provider_asset_group_orm():
 @pytest.mark.asyncio
 async def test_refresh_of_provider_asset_attribute_data():
     # Patch the step property to use 1 day instead of 1 hour for testing
-    resolution = dt.timedelta(minutes=1)
+    resolution = dt.timedelta(hours=1)
     with (
         patch(
             "src.attributes.asset_group_attributes.StatisticalPairsTrading.step",
@@ -168,7 +167,7 @@ async def test_refresh_of_provider_asset_attribute_data():
         start_time = (dt.datetime.now()).replace(
             hour=12, minute=0, second=0, microsecond=0
         )
-        end_time = start_time + dt.timedelta(days=60)
+        end_time = start_time + dt.timedelta(days=90)
         tf = pd.date_range(start=start_time, end=end_time, freq=resolution)
 
         # Create the first asset to be a geometric brownian motion.
@@ -235,12 +234,12 @@ async def test_refresh_of_provider_asset_attribute_data():
 
         # Get provider asset attribute data.
         with Session(engine) as session:
-            provider_asset_group_attributes_df = pl.read_database(
-                query=select(models.ProviderAssetGroupAttribute).where(
+            provider_asset_group_attributes_df = pd.read_sql(
+                select(models.ProviderAssetGroupAttribute).where(
                     models.ProviderAssetGroupAttribute.provider_asset_group_id
                     == provider_asset_group.id
                 ),
-                connection=engine,
+                con=engine,
             )
             assert_within_tolerance(
                 provider_asset_group_attributes_df["linear_fit_beta"].mean(),
