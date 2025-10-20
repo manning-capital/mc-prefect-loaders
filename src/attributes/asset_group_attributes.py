@@ -216,7 +216,7 @@ class StatisticalPairsTrading(AbstractAssetGroupType):
             p_value_array.append(cointegration_result[1])
 
             # Fit the residuals to the Ornstein-Uhlenbeck process.
-            ou_params = OrnsteinUhlenbeck().fit(residuals, DELTA_T)
+            ou_params = OrnsteinUhlenbeck().fit(residuals)
             theta_array.append(ou_params.theta)
             mu_array.append(ou_params.mu)
             sigma_array.append(ou_params.sigma)
