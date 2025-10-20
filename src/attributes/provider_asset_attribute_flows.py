@@ -80,7 +80,8 @@ async def refresh_by_asset_group_type(
 
             # Set the data.
             await set_data(
-                models.ProviderAssetGroupAttribute.__tablename__, attribute_results
+                models.ProviderAssetGroupAttribute.__tablename__,
+                attribute_results.to_pandas(),
             )
 
 

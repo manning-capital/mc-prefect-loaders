@@ -220,11 +220,13 @@ async def test_refresh_of_provider_asset_attribute_data():
             )
             assert provider_asset_group is not None
             assert len(provider_asset_group.members) == 2
-        
+
         # Get provider asset attribute data.
         with Session(engine) as session:
             provider_asset_group_attributes = (
-                session.execute(select(models.ProviderAssetGroupAttribute)).scalars().all()
+                session.execute(select(models.ProviderAssetGroupAttribute))
+                .scalars()
+                .all()
             )
             assert provider_asset_group_attributes is not None
             assert len(provider_asset_group_attributes) == 2
