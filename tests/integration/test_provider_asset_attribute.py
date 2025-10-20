@@ -128,6 +128,7 @@ async def test_creation_of_members_through_provider_asset_group_orm():
 @pytest.mark.asyncio
 async def test_refresh_of_provider_asset_attribute_data():
     # Patch the step property to use 1 day instead of 1 hour for testing
+    resolution = dt.timedelta(minutes=1)
     with (
         patch(
             "src.attributes.asset_group_attributes.StatisticalPairsTrading.step",
@@ -135,7 +136,7 @@ async def test_refresh_of_provider_asset_attribute_data():
         ),
         patch(
             "src.attributes.asset_group_attributes.StatisticalPairsTrading.resolution",
-            property(lambda self: dt.timedelta(hours=1)),
+            property(lambda self: resolution),
         ),
     ):
         # Get the engine.
@@ -168,11 +169,7 @@ async def test_refresh_of_provider_asset_attribute_data():
             hour=12, minute=0, second=0, microsecond=0
         )
         end_time = start_time + dt.timedelta(days=60)
-        tf = pd.date_range(
-            start=start_time,
-            end=end_time,
-            freq="1h",
-        )
+        tf = pd.date_range(start=start_time, end=end_time, freq=resolution)
 
         # Create the first asset to be a geometric brownian motion.
         drift = 0.01
