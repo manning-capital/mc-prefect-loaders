@@ -1,9 +1,10 @@
+import numpy as np
 import mc_postgres_db.models as models
 from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session
-import numpy as np
 
 TOLERANCE = 0.15  # ±15% tolerance for parameter recovery
+
 
 async def sample_provider_data(
     engine: Engine,
@@ -135,6 +136,7 @@ async def create_base_data(
 
         return provider_type, provider, content_type, sentiment_type
 
+
 def assert_within_tolerance(
     fitted_value: float, true_value: float, tolerance: float = TOLERANCE
 ):
@@ -165,6 +167,7 @@ def assert_within_tolerance(
             f"Fitted value {fitted_value} not within ±{tolerance * 100}% of true value {true_value}. "
             f"Expected range: [{lower_bound:.6f}, {upper_bound:.6f}]"
         )
+
 
 def set_random_seed(seed: int = 42):
     """Set random seed for reproducibility."""

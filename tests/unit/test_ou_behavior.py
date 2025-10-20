@@ -6,19 +6,19 @@ sys.path.append(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir))
 import numpy as np
 import pytest
 
+from tests.utils import TOLERANCE, set_random_seed, assert_within_tolerance
 from src.attributes.stochastic_models import (
     DELTA_T,
     OUParams,
     OrnsteinUhlenbeck,
 )
 
-from tests.utils import assert_within_tolerance, TOLERANCE, set_random_seed
-
 # Test configuration constants
 N_POINTS = 10_000  # Number of time steps for simulation
 N_SIMULATED = 100  # Number of paths for averaging
 INITIAL_PRICE = 100.0  # Starting price for GBM simulations
 INITIAL_VALUE = 0.0  # Starting value for OU simulations
+
 
 def test_ou_parameter_recovery_standard():
     """

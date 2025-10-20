@@ -14,7 +14,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), os.pardir))
 
 from mc_postgres_db.prefect.asyncio.tasks import set_data, get_engine
 
-from tests.utils import sample_asset_data, sample_provider_data
+from tests.utils import sample_asset_data, sample_provider_data, assert_within_tolerance
 from src.attributes.stochastic_models import (
     OUParams,
     GBMParams,
@@ -25,9 +25,8 @@ from src.attributes.provider_asset_attribute_flows import (
     refresh_provider_asset_attribute_data,
 )
 
-from tests.utils import assert_within_tolerance
-
 TOLERANCE = 0.20  # ±20% tolerance for parameter recovery
+
 
 @pytest.mark.asyncio
 async def test_creation_of_members_through_provider_asset_group_orm():
@@ -246,9 +245,32 @@ async def test_refresh_of_provider_asset_attribute_data():
                 ),
                 connection=engine,
             )
-            assert_within_tolerance(provider_asset_group_attributes_df["linear_fit_beta"].mean(), beta, tolerance=TOLERANCE)
-            assert_within_tolerance(provider_asset_group_attributes_df["linear_fit_alpha"].mean(), alpha, tolerance=TOLERANCE)
-            assert_within_tolerance(provider_asset_group_attributes_df["ol_theta"].mean(), theta, tolerance=TOLERANCE)
-            assert_within_tolerance(provider_asset_group_attributes_df["ol_mu"].mean(), mu, tolerance=TOLERANCE)
-            assert_within_tolerance(provider_asset_group_attributes_df["ol_sigma"].mean(), sigma, tolerance=TOLERANCE)
-            assert provider_asset_group_attributes_df["cointegration_p_value"].mean() < 0.0001, "The cointegration p-value is not less than 0.0001"
+            assert_within_tolerance(
+                provider_asset_group_attributes_df["linear_fit_beta"].mean(),
+                beta,
+                tolerance=TOLERANCE,
+            )
+            assert_within_tolerance(
+                provider_asset_group_attributes_df["linear_fit_alpha"].mean(),
+                alpha,
+                tolerance=TOLERANCE,
+            )
+            assert_within_tolerance(
+                provider_asset_group_attributes_df["ol_theta"].mean(),
+                theta,
+                tolerance=TOLERANCE,
+            )
+            assert_within_tolerance(
+                provider_asset_group_attributes_df["ol_mu"].mean(),
+                mu,
+                tolerance=TOLERANCE,
+            )
+            assert_within_tolerance(
+                provider_asset_group_attributes_df["ol_sigma"].mean(),
+                sigma,
+                tolerance=TOLERANCE,
+            )
+            assert (
+                provider_asset_group_attributes_df["cointegration_p_value"].mean()
+                < 0.0001
+            ), "The cointegration p-value is not less than 0.0001"

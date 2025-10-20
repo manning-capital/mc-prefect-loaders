@@ -16,9 +16,8 @@ sys.path.append(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir))
 import numpy as np
 from scipy import stats
 
+from tests.utils import TOLERANCE, set_random_seed, assert_within_tolerance
 from src.attributes.stochastic_models import DELTA_T, GBMParams, GeometricBrownianMotion
-
-from tests.utils import assert_within_tolerance, TOLERANCE, set_random_seed
 
 # Test configuration
 N_POINTS = 100  # Number of time steps
