@@ -27,6 +27,16 @@ class StochasticModelParams(ABC):
 
 @dataclass
 class GBMParams(StochasticModelParams):
+    """
+    Parameters for the Geometric Brownian Motion (GBM) process.
+
+    Parameters
+    ----------
+    mu : float
+        Drift parameter (μ) in the SDE: dS = mu * S * dt + sigma * S * dW
+    sigma : float
+        Volatility parameter (σ) in the SDE: dS = mu * S * dt + sigma * S * dW
+    """
     mu: float  # drift parameter
     sigma: float  # volatility parameter
 
@@ -35,11 +45,26 @@ class GBMParams(StochasticModelParams):
         self.sigma = sigma
 
     def to_dict(self) -> dict:
+        """
+        Convert the parameters to a dictionary.
+        """
         return {"mu": self.mu, "sigma": self.sigma}
 
 
 @dataclass
 class OUParams(StochasticModelParams):
+    """
+    Parameters for the Ornstein-Uhlenbeck process.
+
+    Parameters
+    ----------
+    mu : float
+        Mean reversion parameter (μ) in the SDE: dX = mu * (theta - X) dt + sigma * dW
+    theta : float
+        Asymptotic mean (θ) in the SDE: dX = mu * (theta - X) dt + sigma * dW
+    sigma : float
+        Brownian motion scale (σ) in the SDE: dX = mu * (theta - X) dt + sigma * dW
+    """
     mu: float  # mean reversion parameter
     theta: float  # asymptotic mean
     sigma: float  # Brownian motion scale (standard deviation)
