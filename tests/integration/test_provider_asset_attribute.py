@@ -6,8 +6,8 @@ from unittest.mock import patch
 import pandas as pd
 import pytest
 import mc_postgres_db.models as models
-from sqlalchemy import select, joinedload
-from sqlalchemy.orm import Session
+from sqlalchemy import select
+from sqlalchemy.orm import Session, joinedload
 
 sys.path.append(os.path.join(os.path.dirname(__file__), os.pardir))
 
