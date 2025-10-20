@@ -171,7 +171,7 @@ async def test_refresh_of_provider_asset_attribute_data():
     mu = 0.02
     sigma = 0.05
     theta = 0.0
-    ou_process = OrnsteinUhlenbeck(OUParams(mu=mu, theta=theta, sigma=sigma))
+    ou_process = OrnsteinUhlenbeck(params=OUParams(mu=mu, theta=theta, sigma=sigma))
     X_spread = ou_process.simulate(N=len(tf), N_simulated=1, X_0=theta)[0]
     S_btc_to_usd = alpha + beta * S_eth_to_usd + X_spread
 
