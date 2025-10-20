@@ -75,6 +75,9 @@ async def refresh_by_asset_group_type(
                 pl.lit(name[0]).alias("provider_asset_group_id"),
             )
 
+            # Drop nulls before setting the data.
+            attribute_results = attribute_results.drop_nulls()
+
             # Set the data.
             await set_data(
                 models.ProviderAssetGroupAttribute.__tablename__, attribute_results
