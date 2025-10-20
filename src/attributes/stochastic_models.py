@@ -106,7 +106,7 @@ class GeometricBrownianMotion(StochasticModel):
     Geometric Brownian Motion process.
     """
 
-    def __init__(self, params: GBMParams):
+    def __init__(self, params: GBMParams = None):
         super().__init__(params)
 
     def log_likelihood(self, X: np.ndarray) -> float:
@@ -224,10 +224,8 @@ class OrnsteinUhlenbeck:
     where $W_t$ is a Wiener process.
     """
 
-    params: OUParams
-
-    def __init__(self, params: OUParams):
-        self.params = params
+    def __init__(self, params: OUParams = None):
+        super().__init__(params)
 
     def log_likelihood(self, X: np.ndarray) -> float:
         """
