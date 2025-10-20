@@ -185,8 +185,8 @@ async def test_refresh_of_provider_asset_attribute_data():
         # Initialize the parameters for Ornstein-Uhlenbeck process including the linear fit between two assets.
         alpha = 850
         beta = 4.5
-        mu = 0.25
-        sigma = 0.1
+        mu = 0.01
+        sigma = 0.05
         theta = 0.0
         ou_process = OrnsteinUhlenbeck(params=OUParams(mu=mu, theta=theta, sigma=sigma))
         X_spread = ou_process.simulate(N=len(tf), N_simulated=1, X_0=theta)[0]
