@@ -6,7 +6,7 @@ from unittest.mock import patch
 import pandas as pd
 import pytest
 import mc_postgres_db.models as models
-from sqlalchemy import select
+from sqlalchemy import select, joinedload
 from sqlalchemy.orm import Session
 
 sys.path.append(os.path.join(os.path.dirname(__file__), os.pardir))
@@ -215,9 +215,11 @@ async def test_refresh_of_provider_asset_attribute_data():
 
         # Check if the provider asset group was created.
         with Session(engine) as session:
-            provider_asset_group = (
-                session.execute(select(models.ProviderAssetGroup)).scalars().all()
-            )
+            provider_asset_group = session.execute(
+                select(models.ProviderAssetGroup).options(
+                    joinedload(models.ProviderAssetGroup.members)
+                )
+            ).scalar_one()
             assert provider_asset_group is not None
             assert len(provider_asset_group.members) == 2
 
