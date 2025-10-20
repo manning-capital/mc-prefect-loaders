@@ -66,13 +66,16 @@ async def refresh_by_asset_group_type(
 
             # Calculate the attributes for the provider asset group market data dataframes.
             logger.info(f"Calculating attributes for {name}...")
+            provider_asset_group_id = name[0]
             attribute_results = asset_group_type.calculate_group_attributes(
                 window=window,
                 step=asset_group_type.step,
                 group_market_df=data,
             )
             attribute_results = attribute_results.with_columns(
-                pl.lit(name[0]).alias("provider_asset_group_id"),
+                pl.lit(provider_asset_group_id, dtype=pl.Int64).alias(
+                    "provider_asset_group_id"
+                ),
             )
 
             # Drop nulls before setting the data.
