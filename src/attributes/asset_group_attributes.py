@@ -189,7 +189,9 @@ class StatisticalPairsTrading(AbstractAssetGroupType):
         theta_array: np.ndarray[np.float64 | np.nan] = np.full(
             len(anchor_timestamps), np.nan, dtype=np.float64
         )
-        mu_array: np.ndarray[np.float64 | np.nan] = np.full(len(anchor_timestamps), np.nan, dtype=np.float64)
+        mu_array: np.ndarray[np.float64 | np.nan] = np.full(
+            len(anchor_timestamps), np.nan, dtype=np.float64
+        )
         sigma_array: np.ndarray[np.float64 | np.nan] = np.full(
             len(anchor_timestamps), np.nan, dtype=np.float64
         )
