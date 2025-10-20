@@ -1,7 +1,9 @@
 import mc_postgres_db.models as models
 from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session
+import numpy as np
 
+TOLERANCE = 0.15  # ±15% tolerance for parameter recovery
 
 async def sample_provider_data(
     engine: Engine,
@@ -132,3 +134,38 @@ async def create_base_data(
         ).scalar_one()
 
         return provider_type, provider, content_type, sentiment_type
+
+def assert_within_tolerance(
+    fitted_value: float, true_value: float, tolerance: float = TOLERANCE
+):
+    """
+    Assert that a fitted parameter is within the specified tolerance of the true value.
+
+    Args:
+        fitted_value: The parameter value estimated from data
+        true_value: The true parameter value used to generate the data
+        tolerance: Relative tolerance (default ±15%)
+    """
+    if true_value == 0:
+        # For zero values, use absolute tolerance
+        assert abs(fitted_value) <= tolerance, (
+            f"Fitted value {fitted_value} not within absolute tolerance {tolerance} of 0"
+        )
+    elif true_value > 0:
+        lower_bound = true_value * (1 - tolerance)
+        upper_bound = true_value * (1 + tolerance)
+        assert lower_bound <= fitted_value <= upper_bound, (
+            f"Fitted value {fitted_value} not within ±{tolerance * 100}% of true value {true_value}. "
+            f"Expected range: [{lower_bound:.6f}, {upper_bound:.6f}]"
+        )
+    else:
+        lower_bound = true_value * (1 + tolerance)
+        upper_bound = true_value * (1 - tolerance)
+        assert lower_bound <= fitted_value <= upper_bound, (
+            f"Fitted value {fitted_value} not within ±{tolerance * 100}% of true value {true_value}. "
+            f"Expected range: [{lower_bound:.6f}, {upper_bound:.6f}]"
+        )
+
+def set_random_seed(seed: int = 42):
+    """Set random seed for reproducibility."""
+    np.random.seed(seed)

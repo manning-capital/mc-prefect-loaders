@@ -4,6 +4,7 @@ import datetime as dt
 from unittest.mock import patch
 
 import pandas as pd
+import polars as pl
 import pytest
 import mc_postgres_db.models as models
 from sqlalchemy import select
@@ -24,6 +25,9 @@ from src.attributes.provider_asset_attribute_flows import (
     refresh_provider_asset_attribute_data,
 )
 
+from tests.utils import assert_within_tolerance
+
+TOLERANCE = 0.20  # ±20% tolerance for parameter recovery
 
 @pytest.mark.asyncio
 async def test_creation_of_members_through_provider_asset_group_orm():
@@ -125,9 +129,15 @@ async def test_creation_of_members_through_provider_asset_group_orm():
 @pytest.mark.asyncio
 async def test_refresh_of_provider_asset_attribute_data():
     # Patch the step property to use 1 day instead of 1 hour for testing
-    with patch(
-        "src.attributes.asset_group_attributes.StatisticalPairsTrading.step",
-        property(lambda self: dt.timedelta(days=1)),
+    with (
+        patch(
+            "src.attributes.asset_group_attributes.StatisticalPairsTrading.step",
+            property(lambda self: dt.timedelta(days=1)),
+        ),
+        patch(
+            "src.attributes.asset_group_attributes.StatisticalPairsTrading.resolution",
+            property(lambda self: dt.timedelta(hours=1)),
+        ),
     ):
         # Get the engine.
         engine = await get_engine()
@@ -162,7 +172,7 @@ async def test_refresh_of_provider_asset_attribute_data():
         tf = pd.date_range(
             start=start_time,
             end=end_time,
-            freq="1min",
+            freq="1h",
         )
 
         # Create the first asset to be a geometric brownian motion.
@@ -179,8 +189,8 @@ async def test_refresh_of_provider_asset_attribute_data():
         # Initialize the parameters for Ornstein-Uhlenbeck process including the linear fit between two assets.
         alpha = 850
         beta = 4.5
-        mu = 0.02
-        sigma = 0.05
+        mu = 0.25
+        sigma = 0.1
         theta = 0.0
         ou_process = OrnsteinUhlenbeck(params=OUParams(mu=mu, theta=theta, sigma=sigma))
         X_spread = ou_process.simulate(N=len(tf), N_simulated=1, X_0=theta)[0]
@@ -215,20 +225,30 @@ async def test_refresh_of_provider_asset_attribute_data():
 
         # Check if the provider asset group was created.
         with Session(engine) as session:
-            provider_asset_group = session.execute(
-                select(models.ProviderAssetGroup).options(
-                    joinedload(models.ProviderAssetGroup.members)
+            provider_asset_group = (
+                session.execute(
+                    select(models.ProviderAssetGroup).options(
+                        joinedload(models.ProviderAssetGroup.members)
+                    )
                 )
-            ).scalar_one()
+                .unique()
+                .scalar_one_or_none()
+            )
             assert provider_asset_group is not None
             assert len(provider_asset_group.members) == 2
 
         # Get provider asset attribute data.
         with Session(engine) as session:
-            provider_asset_group_attributes = (
-                session.execute(select(models.ProviderAssetGroupAttribute))
-                .scalars()
-                .all()
+            provider_asset_group_attributes_df = pl.read_database(
+                query=select(models.ProviderAssetGroupAttribute).where(
+                    models.ProviderAssetGroupAttribute.provider_asset_group_id
+                    == provider_asset_group.id
+                ),
+                connection=engine,
             )
-            assert provider_asset_group_attributes is not None
-            assert len(provider_asset_group_attributes) == 2
+            assert_within_tolerance(provider_asset_group_attributes_df["linear_fit_beta"].mean(), beta, tolerance=TOLERANCE)
+            assert_within_tolerance(provider_asset_group_attributes_df["linear_fit_alpha"].mean(), alpha, tolerance=TOLERANCE)
+            assert_within_tolerance(provider_asset_group_attributes_df["ol_theta"].mean(), theta, tolerance=TOLERANCE)
+            assert_within_tolerance(provider_asset_group_attributes_df["ol_mu"].mean(), mu, tolerance=TOLERANCE)
+            assert_within_tolerance(provider_asset_group_attributes_df["ol_sigma"].mean(), sigma, tolerance=TOLERANCE)
+            assert provider_asset_group_attributes_df["cointegration_p_value"].mean() < 0.0001, "The cointegration p-value is not less than 0.0001"
