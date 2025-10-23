@@ -52,7 +52,7 @@ class StatisticalPairsTrading(AbstractAssetGroupType):
 
     @property
     def windows(self) -> list[dt.timedelta]:
-        return [dt.timedelta(days=7), dt.timedelta(days=30), dt.timedelta(days=90)]
+        return [dt.timedelta(days=30), dt.timedelta(days=60), dt.timedelta(days=90)]
 
     @property
     def step(self) -> dt.timedelta:

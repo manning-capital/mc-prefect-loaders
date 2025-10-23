@@ -76,7 +76,7 @@ async def refresh_by_asset_group_type(
                 pl.lit(provider_asset_group_id, dtype=pl.Int64).alias(
                     models.ProviderAssetGroupAttribute.provider_asset_group_id.name
                 ),
-                pl.lit(window.seconds, dtype=pl.Int64).alias(
+                pl.lit(int(window.total_seconds()), dtype=pl.Int64).alias(
                     models.ProviderAssetGroupAttribute.lookback_window_seconds.name
                 ),
             )

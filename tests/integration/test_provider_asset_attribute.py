@@ -125,19 +125,14 @@ async def test_creation_of_members_through_provider_asset_group_orm():
 
 
 @pytest.mark.asyncio
-async def test_refresh_of_provider_asset_attribute_data():
-    # Patch the step property to use 1 day instead of 1 hour for testing
-    resolution = dt.timedelta(hours=1)
-    with (
-        patch(
-            "src.attributes.asset_group_attributes.StatisticalPairsTrading.step",
-            property(lambda self: dt.timedelta(days=1)),
-        ),
-        patch(
-            "src.attributes.asset_group_attributes.StatisticalPairsTrading.resolution",
-            property(lambda self: resolution),
-        ),
+async def test_parameter_recovery_of_statistical_pairs_trading_30_day_window():
+    with patch(
+        "src.attributes.asset_group_attributes.StatisticalPairsTrading.windows",
+        new_callable=lambda: [dt.timedelta(days=30)],
     ):
+        # Set the resolution.
+        resolution = dt.timedelta(minutes=1)
+
         # Get the engine.
         engine = await get_engine()
 
@@ -167,12 +162,12 @@ async def test_refresh_of_provider_asset_attribute_data():
         start_time = (dt.datetime.now()).replace(
             hour=12, minute=0, second=0, microsecond=0
         )
-        end_time = start_time + dt.timedelta(days=90)
+        end_time = start_time + dt.timedelta(days=45)
         tf = pd.date_range(start=start_time, end=end_time, freq=resolution)
 
         # Create the first asset to be a geometric brownian motion.
-        drift = 0.01
-        volatility = 0.05
+        drift = 0.000001
+        volatility = 0.0001
         S_initial_eth_to_usd = 10000
         gb_process = GeometricBrownianMotion(
             params=GBMParams(mu=drift, sigma=volatility)
@@ -216,7 +211,9 @@ async def test_refresh_of_provider_asset_attribute_data():
         await set_data(models.ProviderAssetMarket.__tablename__, df)
 
         # Create the provider asset group.
-        await refresh_provider_asset_attribute_data(start=start_time, end=end_time)
+        await refresh_provider_asset_attribute_data(
+            start=end_time - dt.timedelta(hours=4), end=end_time
+        )
 
         # Check if the provider asset group was created.
         with Session(engine) as session:
