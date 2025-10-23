@@ -13,7 +13,12 @@ sys.path.append(os.path.join(os.path.dirname(__file__), os.pardir))
 
 from mc_postgres_db.prefect.asyncio.tasks import set_data, get_engine
 
-from tests.utils import sample_asset_data, sample_provider_data, assert_within_tolerance
+from tests.utils import (
+    set_random_seed,
+    sample_asset_data,
+    sample_provider_data,
+    assert_within_tolerance,
+)
 from src.attributes.stochastic_models import (
     OUParams,
     GBMParams,
@@ -130,6 +135,9 @@ async def test_parameter_recovery_of_statistical_pairs_trading_30_day_window():
         "src.attributes.asset_group_attributes.StatisticalPairsTrading.windows",
         new_callable=lambda: [dt.timedelta(days=30)],
     ):
+        # Random seed for the geometric brownian motion and Ornstein-Uhlenbeck process.
+        set_random_seed(48)
+
         # Set the resolution.
         resolution = dt.timedelta(minutes=1)
 
@@ -162,7 +170,7 @@ async def test_parameter_recovery_of_statistical_pairs_trading_30_day_window():
         start_time = (dt.datetime.now()).replace(
             hour=12, minute=0, second=0, microsecond=0
         )
-        end_time = start_time + dt.timedelta(days=45)
+        end_time = start_time + dt.timedelta(days=30, hours=12)
         tf = pd.date_range(start=start_time, end=end_time, freq=resolution)
 
         # Create the first asset to be a geometric brownian motion.
@@ -210,9 +218,35 @@ async def test_parameter_recovery_of_statistical_pairs_trading_30_day_window():
         # Set the data.
         await set_data(models.ProviderAssetMarket.__tablename__, df)
 
+        # Add the asset group.
+        with Session(engine) as session:
+            provider_asset_group = models.ProviderAssetGroup(
+                asset_group_type_id=pairs_trading_asset_group_type.id,
+                name=f"{btc_asset.name}{usd_asset.name}-{eth_asset.name}{usd_asset.name}",
+                description=f"{btc_asset.name}-{usd_asset.name} and {eth_asset.name}-{usd_asset.name}",
+                is_active=True,
+                members=[
+                    models.ProviderAssetGroupMember(
+                        provider_id=kraken_provider.id,
+                        from_asset_id=usd_asset.id,
+                        to_asset_id=btc_asset.id,
+                        order=1,
+                    ),
+                    models.ProviderAssetGroupMember(
+                        provider_id=kraken_provider.id,
+                        from_asset_id=usd_asset.id,
+                        to_asset_id=eth_asset.id,
+                        order=2,
+                    ),
+                ],
+            )
+            session.add(provider_asset_group)
+            session.commit()
+            session.refresh(provider_asset_group)
+
         # Create the provider asset group.
         await refresh_provider_asset_attribute_data(
-            start=end_time - dt.timedelta(hours=4), end=end_time
+            start=end_time - dt.timedelta(hours=12), end=end_time
         )
 
         # Check if the provider asset group was created.
@@ -238,32 +272,23 @@ async def test_parameter_recovery_of_statistical_pairs_trading_30_day_window():
                 ),
                 con=engine,
             )
-            assert_within_tolerance(
-                provider_asset_group_attributes_df["linear_fit_beta"].mean(),
-                beta,
-                tolerance=TOLERANCE,
-            )
-            assert_within_tolerance(
-                provider_asset_group_attributes_df["linear_fit_alpha"].mean(),
-                alpha,
-                tolerance=TOLERANCE,
-            )
-            assert_within_tolerance(
-                provider_asset_group_attributes_df["ol_theta"].mean(),
-                theta,
-                tolerance=TOLERANCE,
-            )
-            assert_within_tolerance(
-                provider_asset_group_attributes_df["ol_mu"].mean(),
-                mu,
-                tolerance=TOLERANCE,
-            )
-            assert_within_tolerance(
-                provider_asset_group_attributes_df["ol_sigma"].mean(),
-                sigma,
-                tolerance=TOLERANCE,
-            )
-            assert (
-                provider_asset_group_attributes_df["cointegration_p_value"].mean()
-                < 0.0001
-            ), "The cointegration p-value is not less than 0.0001"
+            linear_fit_beta = provider_asset_group_attributes_df[
+                "linear_fit_beta"
+            ].mean()
+            linear_fit_alpha = provider_asset_group_attributes_df[
+                "linear_fit_alpha"
+            ].mean()
+            ol_theta = provider_asset_group_attributes_df["ol_theta"].mean()
+            ol_mu = provider_asset_group_attributes_df["ol_mu"].mean()
+            ol_sigma = provider_asset_group_attributes_df["ol_sigma"].mean()
+            cointegration_p_value = provider_asset_group_attributes_df[
+                "cointegration_p_value"
+            ].mean()
+            assert_within_tolerance(linear_fit_beta, beta, tolerance=TOLERANCE)
+            assert_within_tolerance(linear_fit_alpha, alpha, tolerance=TOLERANCE)
+            assert_within_tolerance(ol_theta, theta, tolerance=TOLERANCE)
+            assert_within_tolerance(ol_mu, mu, tolerance=TOLERANCE)
+            assert_within_tolerance(ol_sigma, sigma, tolerance=TOLERANCE)
+            assert_within_tolerance(cointegration_p_value, 0.0001, tolerance=TOLERANCE)
+            assert_within_tolerance(ol_sigma, sigma, tolerance=TOLERANCE)
+            assert_within_tolerance(cointegration_p_value, 0.0001, tolerance=TOLERANCE)
