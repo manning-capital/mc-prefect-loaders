@@ -482,16 +482,16 @@ class TestParameterCombinations:
     @pytest.mark.parametrize(
         "theta,mu,sigma",
         [
-            (2.0, 0.1, 2.0),  # High mean reversion
-            (0.01, 0.1, 2.0),  # Low mean reversion
-            (0.5, 0.1, 10.0),  # High volatility
-            (0.5, 0.05, 1.0),  # Low mean reversion speed
-            (0.5, 0.5, 2.0),  # High mean reversion speed
-            (1.0, 0.1, 5.0),  # Moderate mean reversion, medium volatility
-            (0.1, 0.2, 0.5),  # Low asymptotic mean, high speed, low volatility
-            (3.0, 0.05, 8.0),  # High asymptotic mean, low speed, high volatility
-            (0.0, 0.1, 2.0),  # Zero asymptotic mean (centered around zero)
-            (0.5, 0.01, 15.0),  # Very slow mean reversion, very high volatility
+            (2.0, 0.1, 2.0),      # High long-term mean, moderate mean reversion speed, moderate volatility
+            (0.01, 0.1, 2.0),     # Very low long-term mean, moderate mean reversion speed, moderate volatility
+            (0.5, 0.1, 10.0),     # Moderate long-term mean, moderate mean reversion speed, high volatility
+            (0.5, 0.05, 1.0),     # Moderate long-term mean, low mean reversion speed, low volatility
+            (0.5, 0.5, 2.0),      # Moderate long-term mean, high mean reversion speed, moderate volatility
+            (1.0, 0.1, 5.0),      # High long-term mean, moderate mean reversion speed, medium volatility
+            (0.1, 0.2, 0.5),      # Low long-term mean, high mean reversion speed, low volatility
+            (3.0, 0.05, 8.0),     # Very high long-term mean, low mean reversion speed, high volatility
+            (0.0, 0.1, 2.0),      # Zero long-term mean (centered around zero), moderate mean reversion speed, moderate volatility
+            (0.5, 0.01, 15.0),    # Moderate long-term mean, very low mean reversion speed, very high volatility
         ],
     )
     def test_different_ou_parameters(self, theta, mu, sigma):
