@@ -18,7 +18,6 @@ from tests.utils import (
     sample_asset_data,
     sample_provider_data,
     assert_within_tolerance,
-    generate_cointegrated_pair,
     generate_market_data_dataframe,
 )
 from src.attributes.provider_asset_attribute_flows import (
@@ -837,8 +836,8 @@ async def test_group_not_duplicated_with_three_members_mixed_ordering():
         )
 
         # Adjust SOL prices to be different (multiply by 0.8)
-        sol_mask = df['to_asset_id'] == sol_asset.id
-        df.loc[sol_mask, 'close'] = df.loc[sol_mask, 'close'] * 0.8
+        sol_mask = df["to_asset_id"] == sol_asset.id
+        df.loc[sol_mask, "close"] = df.loc[sol_mask, "close"] * 0.8
 
         # Set the data.
         await set_data(models.ProviderAssetMarket.__tablename__, df)
@@ -1026,11 +1025,11 @@ async def test_group_not_duplicated_with_four_assets():
         )
 
         # Adjust SOL and ADA prices to be different
-        sol_mask = df['to_asset_id'] == sol_asset.id
-        df.loc[sol_mask, 'close'] = df.loc[sol_mask, 'close'] * 0.8
-        
-        ada_mask = df['to_asset_id'] == ada_asset.id
-        df.loc[ada_mask, 'close'] = df.loc[ada_mask, 'close'] * 0.6
+        sol_mask = df["to_asset_id"] == sol_asset.id
+        df.loc[sol_mask, "close"] = df.loc[sol_mask, "close"] * 0.8
+
+        ada_mask = df["to_asset_id"] == ada_asset.id
+        df.loc[ada_mask, "close"] = df.loc[ada_mask, "close"] * 0.6
 
         # Set the data.
         await set_data(models.ProviderAssetMarket.__tablename__, df)
@@ -1476,7 +1475,7 @@ async def test_pairs_only_formed_with_same_from_asset():
         )
 
         # Adjust EUR prices to be different (multiply by 0.85)
-        df_eur['close'] = df_eur['close'] * 0.85
+        df_eur["close"] = df_eur["close"] * 0.85
 
         # Combine both dataframes
         df = pd.concat([df_usd, df_eur], ignore_index=True)
