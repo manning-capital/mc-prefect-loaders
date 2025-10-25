@@ -1731,3 +1731,507 @@ async def test_parameter_recovery_of_statistical_pairs_trading(
             assert cointegration_p_value < 0.001, (
                 f"Cointegration p-value {cointegration_p_value} should be < 0.001"
             )
+
+
+@pytest.mark.asyncio
+async def test_pairs_only_formed_with_same_from_asset():
+    """
+    Test that pairs are only formed when both members have the same from_asset.
+    This ensures pairs trading logic is meaningful (e.g., BTC/USD and ETH/USD can be paired,
+    but BTC/USD and ETH/EUR cannot be paired).
+    """
+    with patch(
+        "src.attributes.asset_group_attributes.StatisticalPairsTrading.windows",
+        new_callable=lambda: [dt.timedelta(hours=1)],
+    ):
+        # Get the engine.
+        engine = await get_engine()
+
+        # Create the provider and asset data.
+        _, kraken_provider = await sample_provider_data(engine)
+        (
+            _,
+            _,
+            btc_asset,
+            eth_asset,
+            usd_asset,
+        ) = await sample_asset_data(engine)
+
+        # Create EUR asset manually
+        with Session(engine) as session:
+            eur_asset = models.Asset(
+                symbol="EUR",
+                name="Euro",
+                asset_type_id=usd_asset.asset_type_id,  # Same type as USD
+                is_active=True,
+            )
+            session.add(eur_asset)
+            session.commit()
+            session.refresh(eur_asset)
+
+        # Create the pairs trading asset group type.
+        with Session(engine) as session:
+            pairs_trading_asset_group_type = models.AssetGroupType(
+                symbol="STATISTICAL_PAIRS_TRADING",
+                name="Statistical Pairs Trading",
+                description="Group type for pairs trading attributes like the cointegration and hedge ratio.",
+                is_active=True,
+            )
+            session.add(pairs_trading_asset_group_type)
+            session.commit()
+            session.refresh(pairs_trading_asset_group_type)
+
+        # Create cointegrated pair data.
+        cointegrated_pair_df = generate_cointegrated_pair(
+            n_points=1000,
+            alpha=10.0,
+            beta=1.5,
+            drift=0.05,
+            volatility=0.2,
+            theta=0.5,
+            mu=0.1,
+            sigma=2.0,
+            start_price=100.0,
+        )
+
+        # Create market data with different from_assets (USD and EUR)
+        # This should result in separate pairs: (BTC/USD, ETH/USD) and (BTC/EUR, ETH/EUR)
+        df = pd.DataFrame(
+            {
+                "timestamp": cointegrated_pair_df["timestamp"],
+                "provider_id": [
+                    kraken_provider.id for _ in cointegrated_pair_df["timestamp"]
+                ],
+                "from_asset_id": [
+                    usd_asset.id for _ in cointegrated_pair_df["timestamp"]
+                ],
+                "to_asset_id": [
+                    btc_asset.id for _ in cointegrated_pair_df["timestamp"]
+                ],
+                "close": cointegrated_pair_df["close_1"],
+            }
+        )
+
+        # Add ETH/USD data
+        df = pd.concat(
+            [
+                df,
+                pd.DataFrame(
+                    {
+                        "timestamp": cointegrated_pair_df["timestamp"],
+                        "provider_id": [
+                            kraken_provider.id
+                            for _ in cointegrated_pair_df["timestamp"]
+                        ],
+                        "from_asset_id": [
+                            usd_asset.id for _ in cointegrated_pair_df["timestamp"]
+                        ],
+                        "to_asset_id": [
+                            eth_asset.id for _ in cointegrated_pair_df["timestamp"]
+                        ],
+                        "close": cointegrated_pair_df["close_2"],
+                    }
+                ),
+            ]
+        )
+
+        # Add BTC/EUR data
+        df = pd.concat(
+            [
+                df,
+                pd.DataFrame(
+                    {
+                        "timestamp": cointegrated_pair_df["timestamp"],
+                        "provider_id": [
+                            kraken_provider.id
+                            for _ in cointegrated_pair_df["timestamp"]
+                        ],
+                        "from_asset_id": [
+                            eur_asset.id for _ in cointegrated_pair_df["timestamp"]
+                        ],
+                        "to_asset_id": [
+                            btc_asset.id for _ in cointegrated_pair_df["timestamp"]
+                        ],
+                        "close": cointegrated_pair_df["close_1"]
+                        * 0.85,  # Different price for EUR
+                    }
+                ),
+            ]
+        )
+
+        # Add ETH/EUR data
+        df = pd.concat(
+            [
+                df,
+                pd.DataFrame(
+                    {
+                        "timestamp": cointegrated_pair_df["timestamp"],
+                        "provider_id": [
+                            kraken_provider.id
+                            for _ in cointegrated_pair_df["timestamp"]
+                        ],
+                        "from_asset_id": [
+                            eur_asset.id for _ in cointegrated_pair_df["timestamp"]
+                        ],
+                        "to_asset_id": [
+                            eth_asset.id for _ in cointegrated_pair_df["timestamp"]
+                        ],
+                        "close": cointegrated_pair_df["close_2"]
+                        * 0.85,  # Different price for EUR
+                    }
+                ),
+            ]
+        )
+
+        # Set the data.
+        await set_data(models.ProviderAssetMarket.__tablename__, df)
+
+        # Create the provider asset groups.
+        await refresh_provider_asset_attribute_data(
+            start=cointegrated_pair_df["timestamp"].min(),
+            end=cointegrated_pair_df["timestamp"].max(),
+        )
+
+        # Verify that exactly 2 pairs were created (one for USD, one for EUR)
+        with Session(engine) as session:
+            provider_asset_groups = list(
+                session.execute(
+                    select(models.ProviderAssetGroup).where(
+                        models.ProviderAssetGroup.asset_group_type_id
+                        == pairs_trading_asset_group_type.id
+                    )
+                )
+                .scalars()
+                .unique()
+            )
+
+            assert len(provider_asset_groups) == 2, (
+                f"Expected exactly 2 pairs (USD and EUR), but got {len(provider_asset_groups)}"
+            )
+
+            # Verify each pair has members with the same from_asset
+            for group in provider_asset_groups:
+                members = group.members
+                assert len(members) == 2, f"Each pair should have exactly 2 members"
+
+                # All members in a pair should have the same from_asset_id
+                from_asset_ids = [member.from_asset_id for member in members]
+                assert len(set(from_asset_ids)) == 1, (
+                    f"All members in a pair should have the same from_asset_id, "
+                    f"but got {from_asset_ids}"
+                )
+
+                # Verify the pair contains BTC and ETH
+                to_asset_ids = [member.to_asset_id for member in members]
+                assert btc_asset.id in to_asset_ids, "Pair should contain BTC"
+                assert eth_asset.id in to_asset_ids, "Pair should contain ETH"
+
+            # Verify we have one USD pair and one EUR pair
+            usd_groups = [
+                g
+                for g in provider_asset_groups
+                if g.members[0].from_asset_id == usd_asset.id
+            ]
+            eur_groups = [
+                g
+                for g in provider_asset_groups
+                if g.members[0].from_asset_id == eur_asset.id
+            ]
+
+            assert len(usd_groups) == 1, "Should have exactly one USD pair"
+            assert len(eur_groups) == 1, "Should have exactly one EUR pair"
+
+
+@pytest.mark.asyncio
+async def test_no_pairs_formed_with_different_from_assets():
+    """
+    Test that when assets have different from_assets, no pairs are formed.
+    This ensures the constraint is properly enforced.
+    """
+    with patch(
+        "src.attributes.asset_group_attributes.StatisticalPairsTrading.windows",
+        new_callable=lambda: [dt.timedelta(hours=1)],
+    ):
+        # Get the engine.
+        engine = await get_engine()
+
+        # Create the provider and asset data.
+        _, kraken_provider = await sample_provider_data(engine)
+        (
+            _,
+            _,
+            btc_asset,
+            eth_asset,
+            usd_asset,
+        ) = await sample_asset_data(engine)
+
+        # Create EUR asset manually
+        with Session(engine) as session:
+            eur_asset = models.Asset(
+                symbol="EUR",
+                name="Euro",
+                asset_type_id=usd_asset.asset_type_id,  # Same type as USD
+                is_active=True,
+            )
+            session.add(eur_asset)
+            session.commit()
+            session.refresh(eur_asset)
+
+        # Create the pairs trading asset group type.
+        with Session(engine) as session:
+            pairs_trading_asset_group_type = models.AssetGroupType(
+                symbol="STATISTICAL_PAIRS_TRADING",
+                name="Statistical Pairs Trading",
+                description="Group type for pairs trading attributes like the cointegration and hedge ratio.",
+                is_active=True,
+            )
+            session.add(pairs_trading_asset_group_type)
+            session.commit()
+            session.refresh(pairs_trading_asset_group_type)
+
+        # Create market data where each asset has a different from_asset
+        # BTC/USD, ETH/EUR - these should NOT form a pair
+        df = pd.DataFrame(
+            {
+                "timestamp": pd.date_range("2024-01-01", periods=1000, freq="1min"),
+                "provider_id": [kraken_provider.id for _ in range(1000)],
+                "from_asset_id": [usd_asset.id for _ in range(1000)],
+                "to_asset_id": [btc_asset.id for _ in range(1000)],
+                "close": [100.0 + i * 0.01 for i in range(1000)],
+            }
+        )
+
+        df = pd.concat(
+            [
+                df,
+                pd.DataFrame(
+                    {
+                        "timestamp": pd.date_range(
+                            "2024-01-01", periods=1000, freq="1min"
+                        ),
+                        "provider_id": [kraken_provider.id for _ in range(1000)],
+                        "from_asset_id": [eur_asset.id for _ in range(1000)],
+                        "to_asset_id": [eth_asset.id for _ in range(1000)],
+                        "close": [200.0 + i * 0.02 for i in range(1000)],
+                    }
+                ),
+            ]
+        )
+
+        # Set the data.
+        await set_data(models.ProviderAssetMarket.__tablename__, df)
+
+        # Create the provider asset groups.
+        await refresh_provider_asset_attribute_data(
+            start=df["timestamp"].min(),
+            end=df["timestamp"].max(),
+        )
+
+        # Verify that NO pairs were created since BTC/USD and ETH/EUR have different from_assets
+        with Session(engine) as session:
+            provider_asset_groups = list(
+                session.execute(
+                    select(models.ProviderAssetGroup).where(
+                        models.ProviderAssetGroup.asset_group_type_id
+                        == pairs_trading_asset_group_type.id
+                    )
+                )
+                .scalars()
+                .unique()
+            )
+
+            assert len(provider_asset_groups) == 0, (
+                f"Expected no pairs since BTC/USD and ETH/EUR have different from_assets, "
+                f"but got {len(provider_asset_groups)} pairs"
+            )
+
+
+@pytest.mark.asyncio
+async def test_multiple_providers_with_same_from_asset():
+    """
+    Test that pairs can be formed across different providers as long as they have the same from_asset.
+    This ensures the constraint is based on from_asset, not provider.
+    """
+    with patch(
+        "src.attributes.asset_group_attributes.StatisticalPairsTrading.windows",
+        new_callable=lambda: [dt.timedelta(hours=1)],
+    ):
+        # Get the engine.
+        engine = await get_engine()
+
+        # Create multiple providers and asset data.
+        _, kraken_provider = await sample_provider_data(engine)
+        _, binance_provider = await sample_provider_data(engine)
+        (
+            _,
+            _,
+            btc_asset,
+            eth_asset,
+            usd_asset,
+        ) = await sample_asset_data(engine)
+
+        # Create the pairs trading asset group type.
+        with Session(engine) as session:
+            pairs_trading_asset_group_type = models.AssetGroupType(
+                symbol="STATISTICAL_PAIRS_TRADING",
+                name="Statistical Pairs Trading",
+                description="Group type for pairs trading attributes like the cointegration and hedge ratio.",
+                is_active=True,
+            )
+            session.add(pairs_trading_asset_group_type)
+            session.commit()
+            session.refresh(pairs_trading_asset_group_type)
+
+        # Create market data with different providers but same from_asset (USD)
+        # Kraken BTC/USD, Binance ETH/USD - these should form a pair
+        df = pd.DataFrame(
+            {
+                "timestamp": pd.date_range("2024-01-01", periods=1000, freq="1min"),
+                "provider_id": [kraken_provider.id for _ in range(1000)],
+                "from_asset_id": [usd_asset.id for _ in range(1000)],
+                "to_asset_id": [btc_asset.id for _ in range(1000)],
+                "close": [100.0 + i * 0.01 for i in range(1000)],
+            }
+        )
+
+        df = pd.concat(
+            [
+                df,
+                pd.DataFrame(
+                    {
+                        "timestamp": pd.date_range(
+                            "2024-01-01", periods=1000, freq="1min"
+                        ),
+                        "provider_id": [binance_provider.id for _ in range(1000)],
+                        "from_asset_id": [usd_asset.id for _ in range(1000)],
+                        "to_asset_id": [eth_asset.id for _ in range(1000)],
+                        "close": [200.0 + i * 0.02 for i in range(1000)],
+                    }
+                ),
+            ]
+        )
+
+        # Set the data.
+        await set_data(models.ProviderAssetMarket.__tablename__, df)
+
+        # Create the provider asset groups.
+        await refresh_provider_asset_attribute_data(
+            start=df["timestamp"].min(),
+            end=df["timestamp"].max(),
+        )
+
+        # Verify that exactly 1 pair was created (Kraken BTC/USD + Binance ETH/USD)
+        with Session(engine) as session:
+            provider_asset_groups = list(
+                session.execute(
+                    select(models.ProviderAssetGroup).where(
+                        models.ProviderAssetGroup.asset_group_type_id
+                        == pairs_trading_asset_group_type.id
+                    )
+                )
+                .scalars()
+                .unique()
+            )
+
+            assert len(provider_asset_groups) == 1, (
+                f"Expected exactly 1 pair (Kraken BTC/USD + Binance ETH/USD), "
+                f"but got {len(provider_asset_groups)}"
+            )
+
+            # Verify the pair has members from different providers but same from_asset
+            group = provider_asset_groups[0]
+            members = group.members
+            assert len(members) == 2, f"Pair should have exactly 2 members"
+
+            # All members should have the same from_asset_id (USD)
+            from_asset_ids = [member.from_asset_id for member in members]
+            assert len(set(from_asset_ids)) == 1, (
+                f"All members should have the same from_asset_id (USD), "
+                f"but got {from_asset_ids}"
+            )
+            assert from_asset_ids[0] == usd_asset.id, "from_asset_id should be USD"
+
+            # Members should have different provider_ids
+            provider_ids = [member.provider_id for member in members]
+            assert len(set(provider_ids)) == 2, (
+                f"Members should have different provider_ids, but got {provider_ids}"
+            )
+            assert kraken_provider.id in provider_ids, "Should include Kraken provider"
+            assert binance_provider.id in provider_ids, (
+                "Should include Binance provider"
+            )
+
+
+@pytest.mark.asyncio
+async def test_insufficient_members_for_pairing():
+    """
+    Test that when there's only one asset with a particular from_asset, no pairs are formed.
+    This ensures the system handles edge cases gracefully.
+    """
+    with patch(
+        "src.attributes.asset_group_attributes.StatisticalPairsTrading.windows",
+        new_callable=lambda: [dt.timedelta(hours=1)],
+    ):
+        # Get the engine.
+        engine = await get_engine()
+
+        # Create the provider and asset data.
+        _, kraken_provider = await sample_provider_data(engine)
+        (
+            _,
+            _,
+            btc_asset,
+            _,
+            usd_asset,
+        ) = await sample_asset_data(engine)
+
+        # Create the pairs trading asset group type.
+        with Session(engine) as session:
+            pairs_trading_asset_group_type = models.AssetGroupType(
+                symbol="STATISTICAL_PAIRS_TRADING",
+                name="Statistical Pairs Trading",
+                description="Group type for pairs trading attributes like the cointegration and hedge ratio.",
+                is_active=True,
+            )
+            session.add(pairs_trading_asset_group_type)
+            session.commit()
+            session.refresh(pairs_trading_asset_group_type)
+
+        # Create market data with only one asset (BTC/USD)
+        # This should result in no pairs since we need at least 2 assets with the same from_asset
+        df = pd.DataFrame(
+            {
+                "timestamp": pd.date_range("2024-01-01", periods=1000, freq="1min"),
+                "provider_id": [kraken_provider.id for _ in range(1000)],
+                "from_asset_id": [usd_asset.id for _ in range(1000)],
+                "to_asset_id": [btc_asset.id for _ in range(1000)],
+                "close": [100.0 + i * 0.01 for i in range(1000)],
+            }
+        )
+
+        # Set the data.
+        await set_data(models.ProviderAssetMarket.__tablename__, df)
+
+        # Create the provider asset groups.
+        await refresh_provider_asset_attribute_data(
+            start=df["timestamp"].min(),
+            end=df["timestamp"].max(),
+        )
+
+        # Verify that NO pairs were created since there's only one asset
+        with Session(engine) as session:
+            provider_asset_groups = list(
+                session.execute(
+                    select(models.ProviderAssetGroup).where(
+                        models.ProviderAssetGroup.asset_group_type_id
+                        == pairs_trading_asset_group_type.id
+                    )
+                )
+                .scalars()
+                .unique()
+            )
+
+            assert len(provider_asset_groups) == 0, (
+                f"Expected no pairs since there's only one asset (BTC/USD), "
+                f"but got {len(provider_asset_groups)} pairs"
+            )
