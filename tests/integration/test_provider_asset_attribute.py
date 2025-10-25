@@ -350,14 +350,18 @@ async def test_creation_of_provider_asset_when_asset_group_already_exists():
 
         # Check if the provider asset group was created.
         with Session(engine) as session:
-            provider_asset_groups = session.execute(
-                select(models.ProviderAssetGroup)
-                .where(
-                    models.ProviderAssetGroup.asset_group_type_id
-                    == pairs_trading_asset_group_type.id
+            provider_asset_groups = (
+                session.execute(
+                    select(models.ProviderAssetGroup)
+                    .where(
+                        models.ProviderAssetGroup.asset_group_type_id
+                        == pairs_trading_asset_group_type.id
+                    )
+                    .options(joinedload(models.ProviderAssetGroup.members))
                 )
-                .options(joinedload(models.ProviderAssetGroup.members))
-            ).scalars()
+                .scalars()
+                .unique()
+            )
             assert len(provider_asset_groups) == 1
             provider_asset_group = provider_asset_groups[0]
             assert provider_asset_group.id == created_provider_asset_group.id
