@@ -385,18 +385,6 @@ class AbstractAssetGroupType(ABC):
                 session.add(
                     models.ProviderAssetGroup(
                         asset_group_type_id=self.asset_group_type.id,
-                        name=" - ".join(
-                            [
-                                f"({member[0].name}:{member[2].name}{member[1].name})"
-                                for member in provider_asset_tuple
-                            ]
-                        ),
-                        description=" - ".join(
-                            [
-                                f"({member[0].name}:{member[2].name}{member[1].name})"
-                                for member in provider_asset_tuple
-                            ]
-                        ),
                         is_active=True,
                         members=provider_asset_group_members,
                     )

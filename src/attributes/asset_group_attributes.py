@@ -131,12 +131,6 @@ class StatisticalPairsTrading(AbstractAssetGroupType):
             return set(
                 models.ProviderAssetGroup(
                     asset_group_type_id=self.asset_group_type.id,
-                    name="-".join(
-                        [f"{pair[2].name}{pair[1].name}" for pair in combination]
-                    ),
-                    description="-".join(
-                        [f"{pair[2].name}{pair[1].name}" for pair in combination]
-                    ),
                     is_active=True,
                     members=[
                         models.ProviderAssetGroupMember(
@@ -269,9 +263,9 @@ class StatisticalPairsTrading(AbstractAssetGroupType):
                 models.ProviderAssetGroupAttribute.linear_fit_mse.name: mse_array,
                 models.ProviderAssetGroupAttribute.linear_fit_r_squared.name: r_squared_array,
                 models.ProviderAssetGroupAttribute.linear_fit_r_squared_adj.name: r_squared_adj_array,
-                models.ProviderAssetGroupAttribute.ol_theta.name: theta_array,
-                models.ProviderAssetGroupAttribute.ol_mu.name: mu_array,
-                models.ProviderAssetGroupAttribute.ol_sigma.name: sigma_array,
+                models.ProviderAssetGroupAttribute.ou_theta.name: theta_array,
+                models.ProviderAssetGroupAttribute.ou_mu.name: mu_array,
+                models.ProviderAssetGroupAttribute.ou_sigma.name: sigma_array,
                 models.ProviderAssetGroupAttribute.cointegration_p_value.name: p_value_array,
             }
         )

@@ -1,7 +1,17 @@
+import datetime as dt
+
 import numpy as np
+import polars as pl
 import mc_postgres_db.models as models
 from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session
+
+from src.attributes.stochastic_models import (
+    OUParams,
+    GBMParams,
+    OrnsteinUhlenbeck,
+    GeometricBrownianMotion,
+)
 
 TOLERANCE = 0.15  # ±15% tolerance for parameter recovery
 
@@ -172,3 +182,138 @@ def assert_within_tolerance(
 def set_random_seed(seed: int = 42):
     """Set random seed for reproducibility."""
     np.random.seed(seed)
+
+
+def generate_cointegrated_pair(
+    n_points: int = 1000,
+    alpha: float = 10.0,
+    beta: float = 1.5,
+    theta: float = 0.5,
+    mu: float = 0.1,
+    sigma: float = 2.0,
+    start_price: float = 100.0,
+    resolution: dt.timedelta = dt.timedelta(minutes=1),
+    seed: int = 42,
+) -> pl.DataFrame:
+    """
+    Generate synthetic cointegrated pair data for testing.
+
+    Creates two price series where:
+    - close_1 follows GBM
+    - close_2 = alpha + beta * close_1 + residuals
+    - residuals follow OU process with known parameters
+
+    Args:
+        n_points: Number of data points
+        alpha: Linear relationship intercept
+        beta: Linear relationship slope
+        theta: OU process asymptotic mean
+        mu: OU process mean reversion speed
+        sigma: OU process volatility
+        start_price: Starting price for close_1
+        resolution: Time resolution
+        seed: Random seed for reproducibility
+
+    Returns:
+        pl.DataFrame with columns: timestamp, close_1, close_2
+    """
+    set_random_seed(seed)
+
+    # Generate base price series using GBM
+    gbm_params = GBMParams(mu=0.05, sigma=0.2)  # Reasonable market parameters
+    gbm = GeometricBrownianMotion(params=gbm_params)
+    close_1_prices = gbm.simulate(N=n_points, N_simulated=1, X_0=start_price)[0]
+
+    # Generate OU residuals with proper parameters for mean reversion
+    ou_params = OUParams(mu=mu, theta=theta, sigma=sigma)
+    ou = OrnsteinUhlenbeck(params=ou_params)
+    residuals = ou.simulate(N=n_points, N_simulated=1, X_0=0.0)[0]
+
+    # Create cointegrated close_2
+    close_2_prices = alpha + beta * close_1_prices + residuals
+
+    # Create timestamps
+    start_time = dt.datetime(2024, 1, 1, 12, 0, 0)
+    timestamps = [start_time + i * resolution for i in range(n_points)]
+
+    return pl.DataFrame(
+        {"timestamp": timestamps, "close_1": close_1_prices, "close_2": close_2_prices}
+    )
+
+
+def generate_non_cointegrated_pair(
+    n_points: int = 1000,
+    resolution: dt.timedelta = dt.timedelta(minutes=1),
+    seed: int = 42,
+) -> pl.DataFrame:
+    """
+    Generate two independent price series that are NOT cointegrated.
+
+    Args:
+        n_points: Number of data points
+        resolution: Time resolution
+        seed: Random seed for reproducibility
+
+    Returns:
+        pl.DataFrame with columns: timestamp, close_1, close_2
+    """
+    set_random_seed(seed)
+
+    # Generate two independent GBM processes
+    gbm_params_1 = GBMParams(mu=0.05, sigma=0.2)
+    gbm_params_2 = GBMParams(mu=0.03, sigma=0.15)
+
+    gbm_1 = GeometricBrownianMotion(params=gbm_params_1)
+    gbm_2 = GeometricBrownianMotion(params=gbm_params_2)
+
+    close_1_prices = gbm_1.simulate(N=n_points, N_simulated=1, X_0=100.0)[0]
+    close_2_prices = gbm_2.simulate(N=n_points, N_simulated=1, X_0=200.0)[0]
+
+    # Create timestamps
+    start_time = dt.datetime(2024, 1, 1, 12, 0, 0)
+    timestamps = [start_time + i * resolution for i in range(n_points)]
+
+    return pl.DataFrame(
+        {"timestamp": timestamps, "close_1": close_1_prices, "close_2": close_2_prices}
+    )
+
+
+def generate_trending_pair(
+    n_points: int = 1000,
+    trend_strength: float = 0.1,
+    resolution: dt.timedelta = dt.timedelta(minutes=1),
+    seed: int = 42,
+) -> pl.DataFrame:
+    """
+    Generate price series with strong trending behavior.
+
+    Args:
+        n_points: Number of data points
+        trend_strength: Strength of the trend (0.1 = 10% per time unit)
+        resolution: Time resolution
+        seed: Random seed for reproducibility
+
+    Returns:
+        pl.DataFrame with columns: timestamp, close_1, close_2
+    """
+    set_random_seed(seed)
+
+    # Generate trending series
+    timestamps = [
+        dt.datetime(2024, 1, 1, 12, 0, 0) + i * resolution for i in range(n_points)
+    ]
+
+    # Create strong upward trend
+    trend_1 = np.linspace(100, 100 * (1 + trend_strength * n_points), n_points)
+    trend_2 = np.linspace(200, 200 * (1 + trend_strength * n_points), n_points)
+
+    # Add some noise
+    noise_1 = np.random.normal(0, 5, n_points)
+    noise_2 = np.random.normal(0, 8, n_points)
+
+    close_1_prices = trend_1 + noise_1
+    close_2_prices = trend_2 + noise_2
+
+    return pl.DataFrame(
+        {"timestamp": timestamps, "close_1": close_1_prices, "close_2": close_2_prices}
+    )

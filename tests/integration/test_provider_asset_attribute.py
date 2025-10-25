@@ -18,6 +18,7 @@ from tests.utils import (
     sample_asset_data,
     sample_provider_data,
     assert_within_tolerance,
+    generate_cointegrated_pair,
 )
 from src.attributes.stochastic_models import (
     OUParams,
@@ -63,8 +64,6 @@ async def test_creation_of_members_through_provider_asset_group_orm():
     with Session(engine) as session:
         provider_asset_group = models.ProviderAssetGroup(
             asset_group_type_id=pairs_trading_asset_group_type.id,
-            name=f"{btc_asset.name}{usd_asset.name}-{eth_asset.name}{usd_asset.name}",
-            description=f"{btc_asset.name}-{usd_asset.name} and {eth_asset.name}-{usd_asset.name}",
             is_active=True,
             members=[
                 models.ProviderAssetGroupMember(
@@ -88,8 +87,8 @@ async def test_creation_of_members_through_provider_asset_group_orm():
     with Session(engine) as session:
         provider_asset_group = session.execute(
             select(models.ProviderAssetGroup).where(
-                models.ProviderAssetGroup.name
-                == f"{btc_asset.name}{usd_asset.name}-{eth_asset.name}{usd_asset.name}"
+                models.ProviderAssetGroup.asset_group_type_id
+                == pairs_trading_asset_group_type.id
             )
         ).scalar_one()
         assert provider_asset_group is not None
@@ -127,6 +126,243 @@ async def test_creation_of_members_through_provider_asset_group_orm():
         assert provider_asset_group_member_2.from_asset_id == usd_asset.id
         assert provider_asset_group_member_2.to_asset_id == eth_asset.id
         assert provider_asset_group_member_2.order == 2
+
+
+@pytest.mark.asyncio
+async def test_creation_of_provider_asset_when_asset_group_does_not_exist():
+    with patch(
+        "src.attributes.asset_group_attributes.StatisticalPairsTrading.windows",
+        new_callable=lambda: [dt.timedelta(hours=1)],
+    ):
+        # Get the engine.
+        engine = await get_engine()
+
+        # Create the provider and asset data.
+        _, kraken_provider = await sample_provider_data(engine)
+        (
+            _,
+            _,
+            btc_asset,
+            eth_asset,
+            usd_asset,
+        ) = await sample_asset_data(engine)
+
+        # Create the pairs trading asset group type.
+        with Session(engine) as session:
+            pairs_trading_asset_group_type = models.AssetGroupType(
+                symbol="STATISTICAL_PAIRS_TRADING",
+                name="Statistical Pairs Trading",
+                description="Group type for pairs trading attributes like the cointegration and hedge ratio.",
+                is_active=True,
+            )
+            session.add(pairs_trading_asset_group_type)
+            session.commit()
+            session.refresh(pairs_trading_asset_group_type)
+
+        # Create cointegrated pair data.
+        cointegrated_pair_df = generate_cointegrated_pair(
+            n_points=1000,
+            alpha=10.0,
+            beta=1.5,
+            theta=0.5,
+            mu=0.1,
+            sigma=2.0,
+            start_price=100.0,
+        )
+
+        # Transform the cointegrated pair data to a provider asset market data.
+        df = pd.DataFrame(
+            {
+                "timestamp": cointegrated_pair_df["timestamp"],
+                "provider_id": [
+                    kraken_provider.id for _ in cointegrated_pair_df["timestamp"]
+                ],
+                "from_asset_id": [
+                    usd_asset.id for _ in cointegrated_pair_df["timestamp"]
+                ],
+                "to_asset_id": [
+                    btc_asset.id for _ in cointegrated_pair_df["timestamp"]
+                ],
+                "close": cointegrated_pair_df["close_1"],
+            }
+        )
+        df = pd.concat(
+            [
+                df,
+                pd.DataFrame(
+                    {
+                        "timestamp": cointegrated_pair_df["timestamp"],
+                        "provider_id": [
+                            kraken_provider.id
+                            for _ in cointegrated_pair_df["timestamp"]
+                        ],
+                        "from_asset_id": [
+                            usd_asset.id for _ in cointegrated_pair_df["timestamp"]
+                        ],
+                        "to_asset_id": [
+                            eth_asset.id for _ in cointegrated_pair_df["timestamp"]
+                        ],
+                        "close": cointegrated_pair_df["close_2"],
+                    }
+                ),
+            ]
+        )
+
+        # Set the data.
+        await set_data(models.ProviderAssetMarket.__tablename__, df)
+
+        # Create the provider asset group.
+        await refresh_provider_asset_attribute_data(
+            start=cointegrated_pair_df["timestamp"].min(),
+            end=cointegrated_pair_df["timestamp"].max(),
+        )
+
+        # Check if the provider asset group was created.
+        with Session(engine) as session:
+            provider_asset_group = (
+                session.execute(
+                    select(models.ProviderAssetGroup)
+                    .where(
+                        models.ProviderAssetGroup.asset_group_type_id
+                        == pairs_trading_asset_group_type.id
+                    )
+                    .options(joinedload(models.ProviderAssetGroup.members))
+                )
+                .unique()
+                .scalar_one_or_none()
+            )
+            assert provider_asset_group is not None
+            assert len(provider_asset_group.members) == 2
+
+
+@pytest.mark.asyncio
+async def test_creation_of_provider_asset_when_asset_group_already_exists():
+    with patch(
+        "src.attributes.asset_group_attributes.StatisticalPairsTrading.windows",
+        new_callable=lambda: [dt.timedelta(days=1)],
+    ):
+        # Get the engine.
+        engine = await get_engine()
+
+        # Create the provider and asset data.
+        _, kraken_provider = await sample_provider_data(engine)
+        (
+            _,
+            _,
+            btc_asset,
+            eth_asset,
+            usd_asset,
+        ) = await sample_asset_data(engine)
+
+        # Create the pairs trading asset group type.
+        with Session(engine) as session:
+            pairs_trading_asset_group_type = models.AssetGroupType(
+                symbol="STATISTICAL_PAIRS_TRADING",
+                name="Statistical Pairs Trading",
+                description="Group type for pairs trading attributes like the cointegration and hedge ratio.",
+                is_active=True,
+            )
+            session.add(pairs_trading_asset_group_type)
+            session.commit()
+            session.refresh(pairs_trading_asset_group_type)
+
+        # Create cointegrated pair data.
+        cointegrated_pair_df = generate_cointegrated_pair(
+            n_points=1000,
+            alpha=10.0,
+            beta=1.5,
+            theta=0.5,
+            mu=0.1,
+            sigma=2.0,
+            start_price=100.0,
+        )
+
+        # Transform the cointegrated pair data to a provider asset market data.
+        df = pd.DataFrame(
+            {
+                "timestamp": cointegrated_pair_df["timestamp"],
+                "provider_id": [
+                    kraken_provider.id for _ in cointegrated_pair_df["timestamp"]
+                ],
+                "from_asset_id": [
+                    usd_asset.id for _ in cointegrated_pair_df["timestamp"]
+                ],
+                "to_asset_id": [
+                    btc_asset.id for _ in cointegrated_pair_df["timestamp"]
+                ],
+                "close": cointegrated_pair_df["close_1"],
+            }
+        )
+        df = pd.concat(
+            [
+                df,
+                pd.DataFrame(
+                    {
+                        "timestamp": cointegrated_pair_df["timestamp"],
+                        "provider_id": [
+                            kraken_provider.id
+                            for _ in cointegrated_pair_df["timestamp"]
+                        ],
+                        "from_asset_id": [
+                            usd_asset.id for _ in cointegrated_pair_df["timestamp"]
+                        ],
+                        "to_asset_id": [
+                            eth_asset.id for _ in cointegrated_pair_df["timestamp"]
+                        ],
+                        "close": cointegrated_pair_df["close_2"],
+                    }
+                ),
+            ]
+        )
+
+        # Set the data.
+        await set_data(models.ProviderAssetMarket.__tablename__, df)
+
+        # Create the provider asset group.
+        with Session(engine) as session:
+            created_provider_asset_group = models.ProviderAssetGroup(
+                asset_group_type_id=pairs_trading_asset_group_type.id,
+                is_active=True,
+                members=[
+                    models.ProviderAssetGroupMember(
+                        provider_id=kraken_provider.id,
+                        from_asset_id=usd_asset.id,
+                        to_asset_id=btc_asset.id,
+                        order=1,
+                    ),
+                    models.ProviderAssetGroupMember(
+                        provider_id=kraken_provider.id,
+                        from_asset_id=usd_asset.id,
+                        to_asset_id=eth_asset.id,
+                        order=2,
+                    ),
+                ],
+            )
+            session.add(created_provider_asset_group)
+            session.commit()
+            session.refresh(created_provider_asset_group)
+
+        # Refresh the provider asset attribute data.
+        await refresh_provider_asset_attribute_data(
+            start=cointegrated_pair_df["timestamp"].min(),
+            end=cointegrated_pair_df["timestamp"].max(),
+        )
+
+        # Check if the provider asset group was created.
+        with Session(engine) as session:
+            provider_asset_groups = session.execute(
+                select(models.ProviderAssetGroup)
+                .where(
+                    models.ProviderAssetGroup.asset_group_type_id
+                    == pairs_trading_asset_group_type.id
+                )
+                .options(joinedload(models.ProviderAssetGroup.members))
+            ).scalars()
+            assert len(provider_asset_groups) == 1
+            provider_asset_group = provider_asset_groups[0]
+            assert provider_asset_group.id == created_provider_asset_group.id
+            assert provider_asset_group.is_active == created_provider_asset_group.is_active
+            assert provider_asset_group.members == created_provider_asset_group.members
 
 
 @pytest.mark.asyncio
@@ -222,8 +458,6 @@ async def test_parameter_recovery_of_statistical_pairs_trading_30_day_window():
         with Session(engine) as session:
             provider_asset_group = models.ProviderAssetGroup(
                 asset_group_type_id=pairs_trading_asset_group_type.id,
-                name=f"{btc_asset.name}{usd_asset.name}-{eth_asset.name}{usd_asset.name}",
-                description=f"{btc_asset.name}-{usd_asset.name} and {eth_asset.name}-{usd_asset.name}",
                 is_active=True,
                 members=[
                     models.ProviderAssetGroupMember(
@@ -278,17 +512,17 @@ async def test_parameter_recovery_of_statistical_pairs_trading_30_day_window():
             linear_fit_alpha = provider_asset_group_attributes_df[
                 "linear_fit_alpha"
             ].mean()
-            ol_theta = provider_asset_group_attributes_df["ol_theta"].mean()
-            ol_mu = provider_asset_group_attributes_df["ol_mu"].mean()
-            ol_sigma = provider_asset_group_attributes_df["ol_sigma"].mean()
+            ou_theta = provider_asset_group_attributes_df["ou_theta"].mean()
+            ou_mu = provider_asset_group_attributes_df["ou_mu"].mean()
+            ou_sigma = provider_asset_group_attributes_df["ou_sigma"].mean()
             cointegration_p_value = provider_asset_group_attributes_df[
                 "cointegration_p_value"
             ].mean()
             assert_within_tolerance(linear_fit_beta, beta, tolerance=TOLERANCE)
             assert_within_tolerance(linear_fit_alpha, alpha, tolerance=TOLERANCE)
-            assert_within_tolerance(ol_theta, theta, tolerance=TOLERANCE)
-            assert_within_tolerance(ol_mu, mu, tolerance=TOLERANCE)
-            assert_within_tolerance(ol_sigma, sigma, tolerance=TOLERANCE)
+            assert_within_tolerance(ou_theta, theta, tolerance=TOLERANCE)
+            assert_within_tolerance(ou_mu, mu, tolerance=TOLERANCE)
+            assert_within_tolerance(ou_sigma, sigma, tolerance=TOLERANCE)
             assert_within_tolerance(cointegration_p_value, 0.0001, tolerance=TOLERANCE)
-            assert_within_tolerance(ol_sigma, sigma, tolerance=TOLERANCE)
+            assert_within_tolerance(ou_sigma, sigma, tolerance=TOLERANCE)
             assert_within_tolerance(cointegration_p_value, 0.0001, tolerance=TOLERANCE)
