@@ -94,7 +94,7 @@ async def refresh_by_asset_group_type(
     task_runner=DaskTaskRunner(cluster_kwargs={"n_workers": 4, "threads_per_worker": 2})
 )
 async def refresh_provider_asset_attribute_data(
-    start: Optional[dt.datetime] = None, end: Optional[dt.datetime] = None
+    start: Optional[dt.datetime] = None, end: Optional[dt.datetime] = None, default_lookback_hours: int = 24
 ):
     """
     Refresh the provider asset attribute data.
@@ -104,7 +104,7 @@ async def refresh_provider_asset_attribute_data(
     # If the start or end is not provided, set it to today.
     if (start is None) or (end is None):
         end = dt.datetime.now()
-        start = end - dt.timedelta(days=1)
+        start = end - dt.timedelta(hours=default_lookback_hours)
         logger.info(
             f"Start or end not provided, setting start to {start} and end to {end}."
         )

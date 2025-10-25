@@ -42,6 +42,9 @@ if __name__ == "__main__":
         schedule=Interval(
             dt.timedelta(hours=1), anchor_date=dt.datetime(2000, 1, 1, 0, 0, 0)
         ),
+        parameters={
+            "default_lookback_hours": 2,
+        },
         build=False,
         push=False,
     )
