@@ -117,6 +117,15 @@ class AbstractAssetGroupType(ABC):
 
     @property
     @abstractmethod
+    def batch_size(self) -> int:
+        """
+        Get the batch size for processing provider asset groups to manage memory usage.
+        Default implementation returns 100.
+        """
+        pass
+
+    @property
+    @abstractmethod
     def group_size(self) -> int:
         """
         Get the exact number of members required for the asset group type.
@@ -334,7 +343,8 @@ class AbstractAssetGroupType(ABC):
                 models.ProviderAssetMarket.to_asset_id,
                 *[getattr(models.ProviderAssetMarket, col) for col in market_columns],
             ).where(
-                models.ProviderAssetMarket.timestamp.in_(datetime_grid["timestamp"]),
+                models.ProviderAssetMarket.timestamp >= floor_start,
+                models.ProviderAssetMarket.timestamp <= ceil_end,
                 models.ProviderAssetMarket.provider_id.in_(
                     unique_combinations["provider_id"]
                 ),

@@ -35,59 +35,72 @@ async def refresh_by_asset_group_type(
         f"Getting the current provider asset groups for {asset_group_type.asset_group_type.name}..."
     )
     provider_asset_group_ids = asset_group_type.get_current_provider_asset_group_ids()
+    provider_asset_group_id_list = list(provider_asset_group_ids)
+    batch_size = asset_group_type.batch_size
 
     # Calculate the attributes for the provider asset market data dataframes.
     for window in asset_group_type.windows:
-        # Get the provider asset group market data for the window.
         logger.info(
-            f"Getting the provider asset group market data for {asset_group_type.asset_group_type.name} with window {window}..."
+            f"Processing {len(provider_asset_group_id_list)} groups in batches of {batch_size} for window {window}..."
         )
-        provider_asset_group_members_df: pl.DataFrame = (
-            asset_group_type.get_provider_asset_group_market_data(
-                provider_asset_group_ids=provider_asset_group_ids,
-                start=start - window,
-                end=end,
+        
+        # Process in batches
+        for i in range(0, len(provider_asset_group_id_list), batch_size):
+            batch_ids = set(provider_asset_group_id_list[i:i + batch_size])
+            batch_num = (i // batch_size) + 1
+            total_batches = (len(provider_asset_group_id_list) + batch_size - 1) // batch_size
+            
+            logger.info(
+                f"Processing batch {batch_num}/{total_batches} ({len(batch_ids)} groups) for window {window}..."
             )
-        )
-
-        # Calculate the attributes for the provider asset group market data dataframes.
-        logger.info(
-            f"Calculating attributes for {asset_group_type.asset_group_type.name} with window {window}..."
-        )
-        for name, data in provider_asset_group_members_df.group_by(
-            [
-                "provider_asset_group_id",
-            ]
-        ):
-            # Check if the data is empty.
-            if data.is_empty():
-                logger.info(f"Data is empty for {name}, skipping...")
-                continue
+            
+            # Get the provider asset group market data for the batch.
+            provider_asset_group_members_df: pl.DataFrame = (
+                asset_group_type.get_provider_asset_group_market_data(
+                    provider_asset_group_ids=batch_ids,
+                    start=start - window,
+                    end=end,
+                )
+            )
 
             # Calculate the attributes for the provider asset group market data dataframes.
-            logger.info(f"Calculating attributes for {name}...")
-            provider_asset_group_id = name[0]
-            attribute_results = asset_group_type.calculate_group_attributes(
-                window=window,
-                step=asset_group_type.step,
-                group_market_df=data,
+            logger.info(
+                f"Calculating attributes for batch {batch_num}/{total_batches} with window {window}..."
             )
-            attribute_results = attribute_results.with_columns(
-                pl.lit(provider_asset_group_id, dtype=pl.Int64).alias(
-                    models.ProviderAssetGroupAttribute.provider_asset_group_id.name
-                ),
-                pl.lit(int(window.total_seconds()), dtype=pl.Int64).alias(
-                    models.ProviderAssetGroupAttribute.lookback_window_seconds.name
-                ),
-            )
+            for name, data in provider_asset_group_members_df.group_by(
+                [
+                    "provider_asset_group_id",
+                ]
+            ):
+                # Check if the data is empty.
+                if data.is_empty():
+                    logger.info(f"Data is empty for {name}, skipping...")
+                    continue
 
-            # Drop nulls before setting the data.
-            to_set_data = attribute_results.drop_nulls().to_pandas()
+                # Calculate the attributes for the provider asset group market data dataframes.
+                logger.info(f"Calculating attributes for {name}...")
+                provider_asset_group_id = name[0]
+                attribute_results = asset_group_type.calculate_group_attributes(
+                    window=window,
+                    step=asset_group_type.step,
+                    group_market_df=data,
+                )
+                attribute_results = attribute_results.with_columns(
+                    pl.lit(provider_asset_group_id, dtype=pl.Int64).alias(
+                        models.ProviderAssetGroupAttribute.provider_asset_group_id.name
+                    ),
+                    pl.lit(int(window.total_seconds()), dtype=pl.Int64).alias(
+                        models.ProviderAssetGroupAttribute.lookback_window_seconds.name
+                    ),
+                )
 
-            # Set the data.
-            await set_data(
-                models.ProviderAssetGroupAttribute.__tablename__, to_set_data
-            )
+                # Drop nulls before setting the data.
+                to_set_data = attribute_results.drop_nulls().to_pandas()
+
+                # Set the data.
+                await set_data(
+                    models.ProviderAssetGroupAttribute.__tablename__, to_set_data
+                )
 
 
 @flow(
