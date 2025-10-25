@@ -79,7 +79,9 @@ class KrakenProviderAssetMarketData(AbstractProviderAssetMarketData):
 
         # If no asset pairs, return empty DataFrame with correct columns
         if asset_pairs.empty:
-            return pd.DataFrame(columns=["pair_asset_code", "from_asset_code", "to_asset_code"])
+            return pd.DataFrame(
+                columns=["pair_asset_code", "from_asset_code", "to_asset_code"]
+            )
 
         # Filter the asset pairs to only include the asset codes that are in the asset_codes series.
         asset_pairs = asset_pairs.loc[
