@@ -1605,7 +1605,7 @@ async def test_parameter_recovery_of_statistical_pairs_trading_30_day_window():
         drift = 0.00005
         volatility = 0.0005
         theta = 0.0
-        mu = 0.0001
+        mu = 0.01
         sigma = 0.005
         start_price = 100.0
         cointegrated_pair_df = generate_cointegrated_pair(
