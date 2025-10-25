@@ -43,17 +43,19 @@ async def refresh_by_asset_group_type(
         logger.info(
             f"Processing {len(provider_asset_group_id_list)} groups in batches of {batch_size} for window {window}..."
         )
-        
+
         # Process in batches
         for i in range(0, len(provider_asset_group_id_list), batch_size):
-            batch_ids = set(provider_asset_group_id_list[i:i + batch_size])
+            batch_ids = set(provider_asset_group_id_list[i : i + batch_size])
             batch_num = (i // batch_size) + 1
-            total_batches = (len(provider_asset_group_id_list) + batch_size - 1) // batch_size
-            
+            total_batches = (
+                len(provider_asset_group_id_list) + batch_size - 1
+            ) // batch_size
+
             logger.info(
                 f"Processing batch {batch_num}/{total_batches} ({len(batch_ids)} groups) for window {window}..."
             )
-            
+
             # Get the provider asset group market data for the batch.
             provider_asset_group_members_df: pl.DataFrame = (
                 asset_group_type.get_provider_asset_group_market_data(

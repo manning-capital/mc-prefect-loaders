@@ -1,6 +1,9 @@
 import datetime as dt
+from typing import List, Optional
+from itertools import combinations
 
 import numpy as np
+import pandas as pd
 import polars as pl
 import mc_postgres_db.models as models
 from sqlalchemy import Engine, select
@@ -321,3 +324,157 @@ def generate_trending_pair(
     return pl.DataFrame(
         {"timestamp": timestamps, "close_1": close_1_prices, "close_2": close_2_prices}
     )
+
+
+def generate_market_data_dataframe(
+    to_asset_ids: List[int],
+    n_points: int = 1000,
+    n_cointegrated_pairs: Optional[int] = None,
+    provider_id: int = 1,
+    from_asset_id: int = 1,
+    cointegrated_params: dict = None,
+    resolution: dt.timedelta = dt.timedelta(minutes=1),
+    seed: int = 42,
+) -> pd.DataFrame:
+    """
+    Generate a pandas DataFrame for ProviderAssetMarket data with configurable assets and cointegrated pairs.
+
+    Args:
+        to_asset_ids: List of to asset IDs (required)
+        n_points: Number of data points to generate
+        n_cointegrated_pairs: Number of cointegrated pairs to generate. If None, all possible pairs will be cointegrated
+        provider_id: Provider ID for all market data
+        from_asset_id: From asset ID (base currency, e.g., USD)
+        cointegrated_params: Dictionary of parameters for cointegrated pairs generation
+        resolution: Time resolution for timestamps
+        seed: Random seed for reproducibility
+
+    Returns:
+        pd.DataFrame with columns: timestamp, provider_id, from_asset_id, to_asset_id, close
+
+    Raises:
+        ValueError: If n_cointegrated_pairs exceeds the maximum possible pairs (C(n,2) where n = len(to_asset_ids))
+    """
+    n_assets = len(to_asset_ids)
+    max_pairs = n_assets * (n_assets - 1) // 2  # C(n,2) = n choose 2
+
+    # If n_cointegrated_pairs is None, use all possible pairs
+    if n_cointegrated_pairs is None:
+        n_cointegrated_pairs = max_pairs
+    elif n_cointegrated_pairs > max_pairs:
+        raise ValueError(
+            f"n_cointegrated_pairs ({n_cointegrated_pairs}) cannot exceed maximum possible pairs ({max_pairs}) "
+            f"for {n_assets} assets"
+        )
+
+    # Default cointegrated parameters
+    default_cointegrated_params = {
+        "alpha": 10.0,
+        "beta": 1.5,
+        "drift": 0.05,
+        "volatility": 0.2,
+        "theta": 0.5,
+        "mu": 0.1,
+        "sigma": 2.0,
+        "start_price": 100.0,
+    }
+
+    if cointegrated_params is None:
+        cointegrated_params = default_cointegrated_params
+    else:
+        # Merge with defaults
+        cointegrated_params = {**default_cointegrated_params, **cointegrated_params}
+
+    # Generate timestamps
+    start_time = dt.datetime(2024, 1, 1, 12, 0, 0)
+    timestamps = [start_time + i * resolution for i in range(n_points)]
+
+    # Generate cointegrated pairs
+    cointegrated_pairs = []
+    all_pairs = list(combinations(range(len(to_asset_ids)), 2))  # All possible pairs
+
+    # Take only the requested number of pairs
+    selected_pairs = all_pairs[:n_cointegrated_pairs]
+
+    for i, (asset_idx_1, asset_idx_2) in enumerate(selected_pairs):
+        # Generate cointegrated pair data
+        cointegrated_df = generate_cointegrated_pair(
+            n_points=n_points,
+            alpha=cointegrated_params["alpha"],
+            beta=cointegrated_params["beta"],
+            drift=cointegrated_params["drift"],
+            volatility=cointegrated_params["volatility"],
+            theta=cointegrated_params["theta"],
+            mu=cointegrated_params["mu"],
+            sigma=cointegrated_params["sigma"],
+            start_price=cointegrated_params["start_price"],
+            resolution=resolution,
+            seed=seed + i,  # Different seed for each pair
+        )
+
+        # Add first asset (close_1)
+        cointegrated_pairs.append(
+            pd.DataFrame(
+                {
+                    "timestamp": timestamps,
+                    "provider_id": [provider_id] * n_points,
+                    "from_asset_id": [from_asset_id] * n_points,
+                    "to_asset_id": [to_asset_ids[asset_idx_1]] * n_points,
+                    "close": cointegrated_df["close_1"].to_list(),
+                }
+            )
+        )
+
+        # Add second asset (close_2)
+        cointegrated_pairs.append(
+            pd.DataFrame(
+                {
+                    "timestamp": timestamps,
+                    "provider_id": [provider_id] * n_points,
+                    "from_asset_id": [from_asset_id] * n_points,
+                    "to_asset_id": [to_asset_ids[asset_idx_2]] * n_points,
+                    "close": cointegrated_df["close_2"].to_list(),
+                }
+            )
+        )
+
+    # Generate non-cointegrated assets for remaining assets
+    non_cointegrated_assets = []
+    used_asset_indices = set()
+    for asset_idx_1, asset_idx_2 in selected_pairs:
+        used_asset_indices.add(asset_idx_1)
+        used_asset_indices.add(asset_idx_2)
+
+    remaining_asset_indices = [
+        i for i in range(len(to_asset_ids)) if i not in used_asset_indices
+    ]
+
+    for i, asset_idx in enumerate(remaining_asset_indices):
+        # Generate independent GBM process
+        set_random_seed(
+            seed + 100 + i
+        )  # Different seed for each non-cointegrated asset
+
+        gbm_params = GBMParams(
+            mu=0.05 + i * 0.01, sigma=0.2 + i * 0.05
+        )  # Vary parameters slightly
+        gbm = GeometricBrownianMotion(params=gbm_params)
+        prices = gbm.simulate(N=n_points, N_simulated=1, X_0=100.0 + i * 50)[0]
+
+        non_cointegrated_assets.append(
+            pd.DataFrame(
+                {
+                    "timestamp": timestamps,
+                    "provider_id": [provider_id] * n_points,
+                    "from_asset_id": [from_asset_id] * n_points,
+                    "to_asset_id": [to_asset_ids[asset_idx]] * n_points,
+                    "close": prices,
+                }
+            )
+        )
+
+    # Combine all dataframes
+    all_dataframes = cointegrated_pairs + non_cointegrated_assets
+    result_df = pd.concat(all_dataframes, ignore_index=True)
+
+    return result_df

@@ -19,6 +19,7 @@ from tests.utils import (
     sample_provider_data,
     assert_within_tolerance,
     generate_cointegrated_pair,
+    generate_market_data_dataframe,
 )
 from src.attributes.provider_asset_attribute_flows import (
     refresh_provider_asset_attribute_data,
@@ -153,55 +154,23 @@ async def test_creation_of_provider_asset_when_asset_group_does_not_exist():
             session.commit()
             session.refresh(pairs_trading_asset_group_type)
 
-        # Create cointegrated pair data.
-        cointegrated_pair_df = generate_cointegrated_pair(
+        # Generate market data with 1 cointegrated pair (BTC/USD and ETH/USD)
+        df = generate_market_data_dataframe(
+            to_asset_ids=[btc_asset.id, eth_asset.id],
             n_points=1000,
-            alpha=10.0,
-            beta=1.5,
-            drift=0.05,
-            volatility=0.2,
-            theta=0.5,
-            mu=0.1,
-            sigma=2.0,
-            start_price=100.0,
-        )
-
-        # Transform the cointegrated pair data to a provider asset market data.
-        df = pd.DataFrame(
-            {
-                "timestamp": cointegrated_pair_df["timestamp"],
-                "provider_id": [
-                    kraken_provider.id for _ in cointegrated_pair_df["timestamp"]
-                ],
-                "from_asset_id": [
-                    usd_asset.id for _ in cointegrated_pair_df["timestamp"]
-                ],
-                "to_asset_id": [
-                    btc_asset.id for _ in cointegrated_pair_df["timestamp"]
-                ],
-                "close": cointegrated_pair_df["close_1"],
-            }
-        )
-        df = pd.concat(
-            [
-                df,
-                pd.DataFrame(
-                    {
-                        "timestamp": cointegrated_pair_df["timestamp"],
-                        "provider_id": [
-                            kraken_provider.id
-                            for _ in cointegrated_pair_df["timestamp"]
-                        ],
-                        "from_asset_id": [
-                            usd_asset.id for _ in cointegrated_pair_df["timestamp"]
-                        ],
-                        "to_asset_id": [
-                            eth_asset.id for _ in cointegrated_pair_df["timestamp"]
-                        ],
-                        "close": cointegrated_pair_df["close_2"],
-                    }
-                ),
-            ]
+            n_cointegrated_pairs=1,
+            provider_id=kraken_provider.id,
+            from_asset_id=usd_asset.id,
+            cointegrated_params={
+                "alpha": 10.0,
+                "beta": 1.5,
+                "drift": 0.05,
+                "volatility": 0.2,
+                "theta": 0.5,
+                "mu": 0.1,
+                "sigma": 2.0,
+                "start_price": 100.0,
+            },
         )
 
         # Set the data.
@@ -209,8 +178,8 @@ async def test_creation_of_provider_asset_when_asset_group_does_not_exist():
 
         # Create the provider asset group.
         await refresh_provider_asset_attribute_data(
-            start=cointegrated_pair_df["timestamp"].min(),
-            end=cointegrated_pair_df["timestamp"].max(),
+            start=df["timestamp"].min(),
+            end=df["timestamp"].max(),
         )
 
         # Check if the provider asset group was created.
@@ -262,55 +231,23 @@ async def test_creation_of_provider_asset_when_asset_group_already_exists():
             session.commit()
             session.refresh(pairs_trading_asset_group_type)
 
-        # Create cointegrated pair data.
-        cointegrated_pair_df = generate_cointegrated_pair(
+        # Generate market data with 1 cointegrated pair (BTC/USD and ETH/USD)
+        df = generate_market_data_dataframe(
+            to_asset_ids=[btc_asset.id, eth_asset.id],
             n_points=1000,
-            alpha=10.0,
-            beta=1.5,
-            drift=0.05,
-            volatility=0.2,
-            theta=0.5,
-            mu=0.1,
-            sigma=2.0,
-            start_price=100.0,
-        )
-
-        # Transform the cointegrated pair data to a provider asset market data.
-        df = pd.DataFrame(
-            {
-                "timestamp": cointegrated_pair_df["timestamp"],
-                "provider_id": [
-                    kraken_provider.id for _ in cointegrated_pair_df["timestamp"]
-                ],
-                "from_asset_id": [
-                    usd_asset.id for _ in cointegrated_pair_df["timestamp"]
-                ],
-                "to_asset_id": [
-                    btc_asset.id for _ in cointegrated_pair_df["timestamp"]
-                ],
-                "close": cointegrated_pair_df["close_1"],
-            }
-        )
-        df = pd.concat(
-            [
-                df,
-                pd.DataFrame(
-                    {
-                        "timestamp": cointegrated_pair_df["timestamp"],
-                        "provider_id": [
-                            kraken_provider.id
-                            for _ in cointegrated_pair_df["timestamp"]
-                        ],
-                        "from_asset_id": [
-                            usd_asset.id for _ in cointegrated_pair_df["timestamp"]
-                        ],
-                        "to_asset_id": [
-                            eth_asset.id for _ in cointegrated_pair_df["timestamp"]
-                        ],
-                        "close": cointegrated_pair_df["close_2"],
-                    }
-                ),
-            ]
+            n_cointegrated_pairs=1,
+            provider_id=kraken_provider.id,
+            from_asset_id=usd_asset.id,
+            cointegrated_params={
+                "alpha": 10.0,
+                "beta": 1.5,
+                "drift": 0.05,
+                "volatility": 0.2,
+                "theta": 0.5,
+                "mu": 0.1,
+                "sigma": 2.0,
+                "start_price": 100.0,
+            },
         )
 
         # Set the data.
@@ -1609,7 +1546,7 @@ async def test_parameter_recovery_of_statistical_pairs_trading(
             session.commit()
             session.refresh(provider_asset_group)
 
-        # Create cointegrated pair data.
+        # Generate market data with 1 cointegrated pair (BTC/USD and ETH/USD)
         alpha = 10.0
         beta = 1.5
         drift = 0.00005
@@ -1618,55 +1555,24 @@ async def test_parameter_recovery_of_statistical_pairs_trading(
         mu = 0.01
         sigma = 0.005
         start_price = 100.0
-        cointegrated_pair_df = generate_cointegrated_pair(
-            n_points=data_days * 24 * 60,  # Sufficient data for the window
-            alpha=alpha,
-            beta=beta,
-            drift=drift,
-            volatility=volatility,
-            theta=theta,
-            mu=mu,
-            sigma=sigma,
-            start_price=start_price,
-            resolution=resolution,
-        )
 
-        # Transform the cointegrated pair data to a provider asset market data.
-        df = pd.DataFrame(
-            {
-                "timestamp": cointegrated_pair_df["timestamp"],
-                "provider_id": [
-                    kraken_provider.id for _ in cointegrated_pair_df["timestamp"]
-                ],
-                "from_asset_id": [
-                    usd_asset.id for _ in cointegrated_pair_df["timestamp"]
-                ],
-                "to_asset_id": [
-                    btc_asset.id for _ in cointegrated_pair_df["timestamp"]
-                ],
-                "close": cointegrated_pair_df["close_1"],
-            }
-        )
-        df = pd.concat(
-            [
-                df,
-                pd.DataFrame(
-                    {
-                        "timestamp": cointegrated_pair_df["timestamp"],
-                        "provider_id": [
-                            kraken_provider.id
-                            for _ in cointegrated_pair_df["timestamp"]
-                        ],
-                        "from_asset_id": [
-                            usd_asset.id for _ in cointegrated_pair_df["timestamp"]
-                        ],
-                        "to_asset_id": [
-                            eth_asset.id for _ in cointegrated_pair_df["timestamp"]
-                        ],
-                        "close": cointegrated_pair_df["close_2"],
-                    }
-                ),
-            ]
+        df = generate_market_data_dataframe(
+            to_asset_ids=[btc_asset.id, eth_asset.id],
+            n_points=data_days * 24 * 60,  # Sufficient data for the window
+            n_cointegrated_pairs=1,
+            provider_id=kraken_provider.id,
+            from_asset_id=usd_asset.id,
+            cointegrated_params={
+                "alpha": alpha,
+                "beta": beta,
+                "drift": drift,
+                "volatility": volatility,
+                "theta": theta,
+                "mu": mu,
+                "sigma": sigma,
+                "start_price": start_price,
+            },
+            resolution=resolution,
         )
 
         # Set the data.
@@ -1698,8 +1604,8 @@ async def test_parameter_recovery_of_statistical_pairs_trading(
 
         # Create the provider asset group.
         await refresh_provider_asset_attribute_data(
-            start=cointegrated_pair_df["timestamp"].max() - dt.timedelta(hours=12),
-            end=cointegrated_pair_df["timestamp"].max(),
+            start=df["timestamp"].max() - dt.timedelta(hours=12),
+            end=df["timestamp"].max(),
         )
 
         # Get provider asset attribute data.
