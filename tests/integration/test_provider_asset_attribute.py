@@ -361,7 +361,9 @@ async def test_creation_of_provider_asset_when_asset_group_already_exists():
             assert len(provider_asset_groups) == 1
             provider_asset_group = provider_asset_groups[0]
             assert provider_asset_group.id == created_provider_asset_group.id
-            assert provider_asset_group.is_active == created_provider_asset_group.is_active
+            assert (
+                provider_asset_group.is_active == created_provider_asset_group.is_active
+            )
             assert provider_asset_group.members == created_provider_asset_group.members
 
 
