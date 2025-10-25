@@ -1539,13 +1539,23 @@ async def test_group_not_duplicated_with_same_order_values():
 
 
 @pytest.mark.asyncio
-async def test_parameter_recovery_of_statistical_pairs_trading_30_day_window():
+@pytest.mark.parametrize(
+    "window_days,data_days,seed",
+    [
+        (30, 31, 48),  # 30-day window with 31 days of data
+        (60, 61, 49),  # 60-day window with 61 days of data
+        (90, 91, 50),  # 90-day window with 91 days of data
+    ],
+)
+async def test_parameter_recovery_of_statistical_pairs_trading(
+    window_days: int, data_days: int, seed: int
+):
     with patch(
         "src.attributes.asset_group_attributes.StatisticalPairsTrading.windows",
-        new_callable=lambda: [dt.timedelta(days=30)],
+        new_callable=lambda: [dt.timedelta(days=window_days)],
     ):
         # Random seed for the geometric brownian motion and Ornstein-Uhlenbeck process.
-        set_random_seed(48)
+        set_random_seed(seed)
 
         # Set the resolution.
         resolution = dt.timedelta(minutes=1)
@@ -1609,7 +1619,7 @@ async def test_parameter_recovery_of_statistical_pairs_trading_30_day_window():
         sigma = 0.005
         start_price = 100.0
         cointegrated_pair_df = generate_cointegrated_pair(
-            n_points=31 * 24 * 60,
+            n_points=data_days * 24 * 60,  # Sufficient data for the window
             alpha=alpha,
             beta=beta,
             drift=drift,

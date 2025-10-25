@@ -8,6 +8,70 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.engine import Engine
 
 
+def align_timestamp_to_resolution(
+    timestamp: dt.datetime, resolution: dt.timedelta
+) -> dt.datetime:
+    """
+    Align a timestamp to the natural boundary of the given resolution.
+
+    Examples:
+    - 1 minute resolution: 12:34:56.789 → 12:34:00.000
+    - 15 minute resolution: 12:34:56.789 → 12:30:00.000
+    - 1 hour resolution: 12:34:56.789 → 12:00:00.000
+    - 6 hour resolution: 12:34:56.789 → 12:00:00.000
+    - 1 day resolution: 12:34:56.789 → 00:00:00.000
+
+    Args:
+        timestamp: The timestamp to align
+        resolution: The time resolution (e.g., dt.timedelta(minutes=15))
+
+    Returns:
+        The aligned timestamp
+    """
+    # Remove timezone info for alignment
+    naive_timestamp = timestamp.replace(tzinfo=None)
+
+    # Calculate total seconds for easier comparison
+    total_seconds = resolution.total_seconds()
+
+    # Handle different resolution types with intermediate values
+    if total_seconds >= 86400:  # 1 day or more
+        # Daily or longer: align to midnight
+        return naive_timestamp.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    elif total_seconds >= 3600:  # 1 hour or more
+        # Hourly resolution: align to hour boundaries
+        # Check if resolution evenly divides into hours
+        hours = total_seconds / 3600
+        if hours == int(hours) and 24 % int(hours) == 0:
+            # Resolution evenly divides into 24 hours (e.g., 6 hours, 8 hours, 12 hours)
+            hour_boundary = int(naive_timestamp.hour // int(hours)) * int(hours)
+            return naive_timestamp.replace(
+                hour=hour_boundary, minute=0, second=0, microsecond=0
+            )
+        else:
+            # Standard hourly alignment
+            return naive_timestamp.replace(minute=0, second=0, microsecond=0)
+
+    elif total_seconds >= 60:  # 1 minute or more
+        # Minute resolution: align to minute boundaries
+        # Check if resolution evenly divides into minutes
+        minutes = total_seconds / 60
+        if minutes == int(minutes) and 60 % int(minutes) == 0:
+            # Resolution evenly divides into 60 minutes (e.g., 5 min, 10 min, 15 min, 30 min)
+            minute_boundary = int(naive_timestamp.minute // int(minutes)) * int(minutes)
+            return naive_timestamp.replace(
+                minute=minute_boundary, second=0, microsecond=0
+            )
+        else:
+            # Standard minute alignment
+            return naive_timestamp.replace(second=0, microsecond=0)
+
+    else:
+        # Second or shorter: align to the second
+        return naive_timestamp.replace(microsecond=0)
+
+
 class AbstractAssetGroupType(ABC):
     """
     Abstract class for asset group type.
@@ -190,10 +254,11 @@ class AbstractAssetGroupType(ABC):
         """
 
         # Generate the datetime grid. Should be a polars dataframe with a timestamp column.
+        # Align start and end times to the natural boundaries of the resolution
         start_naive = start.replace(tzinfo=None)
         end_naive = end.replace(tzinfo=None)
-        floor_start = start_naive.replace(second=0, microsecond=0)
-        ceil_end = end_naive.replace(second=0, microsecond=0)
+        floor_start = align_timestamp_to_resolution(start_naive, self.resolution)
+        ceil_end = align_timestamp_to_resolution(end_naive, self.resolution)
         datetime_grid = pl.DataFrame().with_columns(
             pl.datetime_range(
                 floor_start, ceil_end, interval=self.resolution, eager=True
