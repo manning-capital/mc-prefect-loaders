@@ -1,8 +1,8 @@
 import datetime as dt
 from typing import Optional
 
-import humanize
 import polars as pl
+import humanize
 import mc_postgres_db.models as models
 from prefect import flow, task, get_run_logger
 from prefect_dask import DaskTaskRunner
@@ -130,7 +130,9 @@ async def refresh_provider_asset_attribute_data(
 
     # Log the processing time range
     total_hours = (end - start).total_seconds() / 3600
-    logger.info(f"Processing provider asset attribute data from {start} to {end} (total range: {total_hours:.1f}h)")
+    logger.info(
+        f"Processing provider asset attribute data from {start} to {end} (total range: {total_hours:.1f}h)"
+    )
 
     # Get an engine.
     engine = await get_engine()

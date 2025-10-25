@@ -275,7 +275,9 @@ async def test_batching_with_multiple_asset_groups():
             "src.attributes.asset_group_attributes.StatisticalPairsTrading.windows",
             new_callable=lambda: [dt.timedelta(hours=1)],
         ),
-        patch.object(StatisticalPairsTrading, "batch_size", return_value=1),  # Force multiple batches
+        patch.object(
+            StatisticalPairsTrading, "batch_size", return_value=1
+        ),  # Force multiple batches
     ):
         # Get the engine.
         engine = await get_engine()
@@ -356,12 +358,20 @@ async def test_batching_with_multiple_asset_groups():
             )
 
             # Should have records for multiple groups
-            group_ids = set(record.provider_asset_group_id for record in attribute_records)
-            assert len(group_ids) >= 1, f"Expected at least 1 group, got {len(group_ids)}"
+            group_ids = set(
+                record.provider_asset_group_id for record in attribute_records
+            )
+            assert len(group_ids) >= 1, (
+                f"Expected at least 1 group, got {len(group_ids)}"
+            )
 
             # Verify each group has records for multiple time windows
             for group_id in group_ids:
-                group_records = [r for r in attribute_records if r.provider_asset_group_id == group_id]
+                group_records = [
+                    r
+                    for r in attribute_records
+                    if r.provider_asset_group_id == group_id
+                ]
                 assert len(group_records) > 0, (
                     f"Group {group_id} should have at least 1 record, got {len(group_records)}"
                 )
@@ -376,7 +386,8 @@ async def test_batching_with_multiple_asset_groups():
                 # Check that at least some records have valid statistical data
                 # (some may be None due to insufficient data or failed calculations)
                 valid_records = [
-                    r for r in group_records 
+                    r
+                    for r in group_records
                     if r.linear_fit_beta is not None and r.linear_fit_alpha is not None
                 ]
                 assert len(valid_records) > 0, (
@@ -386,13 +397,21 @@ async def test_batching_with_multiple_asset_groups():
 
                 # Verify valid records have complete data
                 for record in valid_records:
-                    assert record.ou_mu is not None, "ou_mu should not be None for valid records"
-                    assert record.ou_theta is not None, "ou_theta should not be None for valid records"
-                    assert record.ou_sigma is not None, "ou_sigma should not be None for valid records"
+                    assert record.ou_mu is not None, (
+                        "ou_mu should not be None for valid records"
+                    )
+                    assert record.ou_theta is not None, (
+                        "ou_theta should not be None for valid records"
+                    )
+                    assert record.ou_sigma is not None, (
+                        "ou_sigma should not be None for valid records"
+                    )
 
             # Verify that batching worked correctly by checking that we have records
             # from multiple groups (indicating the batching logic processed all groups)
-            assert len(group_ids) >= 1, f"Expected at least 1 group, got {len(group_ids)}"
+            assert len(group_ids) >= 1, (
+                f"Expected at least 1 group, got {len(group_ids)}"
+            )
 
 
 @pytest.mark.asyncio
@@ -406,7 +425,9 @@ async def test_batching_edge_case_single_batch():
             "src.attributes.asset_group_attributes.StatisticalPairsTrading.windows",
             new_callable=lambda: [dt.timedelta(hours=1)],
         ),
-        patch.object(StatisticalPairsTrading, "batch_size", return_value=100),  # Large batch size
+        patch.object(
+            StatisticalPairsTrading, "batch_size", return_value=100
+        ),  # Large batch size
     ):
         # Get the engine.
         engine = await get_engine()
@@ -483,7 +504,8 @@ async def test_batching_edge_case_single_batch():
 
             # Check that at least some records have valid statistical data
             valid_records = [
-                r for r in attribute_records 
+                r
+                for r in attribute_records
                 if r.linear_fit_beta is not None and r.linear_fit_alpha is not None
             ]
             assert len(valid_records) > 0, (
@@ -567,7 +589,9 @@ async def test_batching_data_integrity_with_different_batch_sizes(batch_size):
         end = df["timestamp"].max()
 
         # Run with current batch size
-        with patch.object(StatisticalPairsTrading, "batch_size", return_value=batch_size):
+        with patch.object(
+            StatisticalPairsTrading, "batch_size", return_value=batch_size
+        ):
             await refresh_by_asset_group_type(asset_group_type, start=start, end=end)
 
         # Get results
@@ -582,18 +606,23 @@ async def test_batching_data_integrity_with_different_batch_sizes(batch_size):
             )
 
         # Verify that results were created
-        assert len(results) > 0, f"Batch size {batch_size} should produce at least 1 result"
+        assert len(results) > 0, (
+            f"Batch size {batch_size} should produce at least 1 result"
+        )
 
         # Verify all records have basic data
         for record in results:
-            assert record.timestamp is not None, f"Batch size {batch_size}: timestamp should not be None"
+            assert record.timestamp is not None, (
+                f"Batch size {batch_size}: timestamp should not be None"
+            )
             assert record.lookback_window_seconds == 3600, (  # 1 hour
                 f"Batch size {batch_size}: Expected lookback_window_seconds=3600, got {record.lookback_window_seconds}"
             )
 
         # Check that at least some records have valid statistical data
         valid_records = [
-            r for r in results 
+            r
+            for r in results
             if r.linear_fit_beta is not None and r.linear_fit_alpha is not None
         ]
         assert len(valid_records) > 0, (
@@ -603,9 +632,15 @@ async def test_batching_data_integrity_with_different_batch_sizes(batch_size):
 
         # Verify valid records have complete data
         for record in valid_records:
-            assert record.ou_mu is not None, f"Batch size {batch_size}: ou_mu should not be None for valid records"
-            assert record.ou_theta is not None, f"Batch size {batch_size}: ou_theta should not be None for valid records"
-            assert record.ou_sigma is not None, f"Batch size {batch_size}: ou_sigma should not be None for valid records"
+            assert record.ou_mu is not None, (
+                f"Batch size {batch_size}: ou_mu should not be None for valid records"
+            )
+            assert record.ou_theta is not None, (
+                f"Batch size {batch_size}: ou_theta should not be None for valid records"
+            )
+            assert record.ou_sigma is not None, (
+                f"Batch size {batch_size}: ou_sigma should not be None for valid records"
+            )
 
 
 @pytest.mark.asyncio
@@ -683,8 +718,10 @@ async def test_batching_with_empty_groups():
         # (since we have insufficient data to create meaningful groups)
         with Session(engine) as session:
             attribute_records = session.query(models.ProviderAssetGroupAttribute).all()
-            
+
             # This test verifies that the batching logic doesn't crash when there are no groups
             # The exact number of records depends on the minimum data requirements
             # We just verify that the function completes without error
-            assert isinstance(attribute_records, list), "Should return a list of records"
+            assert isinstance(attribute_records, list), (
+                "Should return a list of records"
+            )
