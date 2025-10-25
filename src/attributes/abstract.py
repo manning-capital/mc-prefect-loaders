@@ -107,14 +107,19 @@ class AbstractAssetGroupType(ABC):
 
     def __convert_provider_asset_groups_to_tuples(
         self, provider_asset_groups: set[models.ProviderAssetGroup]
-    ) -> set[tuple[tuple[models.Provider, models.Asset, models.Asset], ...]]:
+    ) -> set[tuple[tuple[int, int, int], ...]]:
         """
-        Convert the provider asset groups to a set of sets of tuples.
+        Convert the provider asset groups to a set of tuples of (provider_id, from_asset_id, to_asset_id).
         """
         return {
             tuple(
-                (member.provider, member.from_asset, member.to_asset)
-                for member in provider_asset_group.members
+                sorted(
+                    [
+                        (member.provider.id, member.from_asset.id, member.to_asset.id)
+                        for member in provider_asset_group.members
+                    ],
+                    key=lambda x: x,
+                )
             )
             for provider_asset_group in provider_asset_groups
         }
@@ -349,18 +354,18 @@ class AbstractAssetGroupType(ABC):
         # Get all active provider asset groups of the given type with at least the minimum number of members, with members loaded and sorted by ProviderAssetGroupMember.order.
         current_provider_asset_groups = self.get_current_provider_asset_groups()
 
-        # Convert the desired provider asset groups to a set of sets of tuples.
-        desired_provider_asset_tuples: set[
-            tuple[tuple[models.Provider, models.Asset, models.Asset], ...]
-        ] = self.__convert_provider_asset_groups_to_tuples(
-            desired_provider_asset_groups
+        # Convert the desired provider asset groups to a set of tuples of (provider_id, from_asset_id, to_asset_id).
+        desired_provider_asset_tuples: set[tuple[tuple[int, int, int], ...]] = (
+            self.__convert_provider_asset_groups_to_tuples(
+                desired_provider_asset_groups
+            )
         )
 
-        # Convert the current provider asset groups to a set of sets of tuples.
-        current_provider_asset_tuples: set[
-            tuple[tuple[models.Provider, models.Asset, models.Asset], ...]
-        ] = self.__convert_provider_asset_groups_to_tuples(
-            current_provider_asset_groups
+        # Convert the current provider asset groups to a set of tuples of (provider_id, from_asset_id, to_asset_id).
+        current_provider_asset_tuples: set[tuple[tuple[int, int, int], ...]] = (
+            self.__convert_provider_asset_groups_to_tuples(
+                current_provider_asset_groups
+            )
         )
 
         # Get the new provider asset groups.
@@ -373,9 +378,9 @@ class AbstractAssetGroupType(ABC):
             for provider_asset_tuple in new_provider_asset_tuples:
                 provider_asset_group_members = [
                     models.ProviderAssetGroupMember(
-                        provider_id=provider_asset_group_member_tuple[0].id,
-                        from_asset_id=provider_asset_group_member_tuple[1].id,
-                        to_asset_id=provider_asset_group_member_tuple[2].id,
+                        provider_id=provider_asset_group_member_tuple[0],
+                        from_asset_id=provider_asset_group_member_tuple[1],
+                        to_asset_id=provider_asset_group_member_tuple[2],
                         order=i + 1,
                     )
                     for i, provider_asset_group_member_tuple in enumerate(

@@ -188,6 +188,8 @@ def generate_cointegrated_pair(
     n_points: int = 1000,
     alpha: float = 10.0,
     beta: float = 1.5,
+    drift: float = 0.00001,
+    volatility: float = 0.0001,
     theta: float = 0.5,
     mu: float = 0.1,
     sigma: float = 2.0,
@@ -220,7 +222,7 @@ def generate_cointegrated_pair(
     set_random_seed(seed)
 
     # Generate base price series using GBM
-    gbm_params = GBMParams(mu=0.05, sigma=0.2)  # Reasonable market parameters
+    gbm_params = GBMParams(mu=drift, sigma=volatility)  # Reasonable market parameters
     gbm = GeometricBrownianMotion(params=gbm_params)
     close_1_prices = gbm.simulate(N=n_points, N_simulated=1, X_0=start_price)[0]
 
