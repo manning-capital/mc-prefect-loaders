@@ -2,7 +2,6 @@ import datetime as dt
 from abc import ABC, abstractmethod
 
 import polars as pl
-import dask.dataframe as dd
 import mc_postgres_db.models as models
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
@@ -361,13 +360,18 @@ class AbstractAssetGroupType(ABC):
 
         # Join the datetime grid with the unique combinations and then the market data.
         output: pl.DataFrame = datetime_grid.join(unique_combinations, how="cross")
-        output = output.join(
+        output = output.join_asof(
             market_data,
-            on=["timestamp", "provider_id", "from_asset_id", "to_asset_id"],
-            how="left",
+            on="timestamp",
+            by=[
+                "provider_id",
+                "from_asset_id",
+                "to_asset_id",
+            ],
+            strategy="backward",
         )
 
-        # Forward fill by group using lambda.
+        # Filter to requested time range and drop nulls
         key_columns = [
             "provider_asset_group_id",
             "order",
@@ -375,19 +379,6 @@ class AbstractAssetGroupType(ABC):
             "from_asset_id",
             "to_asset_id",
         ]
-        fill_columns = [col for col in output.columns if col not in key_columns]
-        output = (
-            output.group_by(key_columns)
-            .agg(
-                *[
-                    pl.col(col).sort_by("timestamp").forward_fill()
-                    for col in fill_columns
-                ]
-            )
-            .explode(columns=fill_columns)
-        )
-
-        # Filter to requested time range and drop nulls
         output = output.filter(
             (pl.col("timestamp") >= start_naive) & (pl.col("timestamp") <= end_naive)
         ).drop_nulls()
