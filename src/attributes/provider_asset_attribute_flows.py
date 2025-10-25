@@ -1,6 +1,7 @@
 import datetime as dt
 from typing import Optional
 
+import humanize
 import polars as pl
 import mc_postgres_db.models as models
 from prefect import flow, task, get_run_logger
@@ -40,8 +41,9 @@ async def refresh_by_asset_group_type(
 
     # Calculate the attributes for the provider asset market data dataframes.
     for window in asset_group_type.windows:
+        window_duration = humanize.naturaldelta(window)
         logger.info(
-            f"Processing {len(provider_asset_group_id_list)} groups in batches of {batch_size} for window {window}..."
+            f"Processing {len(provider_asset_group_id_list)} groups in batches of {batch_size} for {window_duration} window..."
         )
 
         # Process in batches
@@ -53,7 +55,7 @@ async def refresh_by_asset_group_type(
             ) // batch_size
 
             logger.info(
-                f"Processing batch {batch_num}/{total_batches} ({len(batch_ids)} groups) for window {window}..."
+                f"Processing batch {batch_num}/{total_batches} ({len(batch_ids)} groups) for {window_duration} window..."
             )
 
             # Get the provider asset group market data for the batch.
@@ -67,7 +69,7 @@ async def refresh_by_asset_group_type(
 
             # Calculate the attributes for the provider asset group market data dataframes.
             logger.info(
-                f"Calculating attributes for batch {batch_num}/{total_batches} with window {window}..."
+                f"Calculating attributes for batch {batch_num}/{total_batches} with {window_duration} window..."
             )
             for name, data in provider_asset_group_members_df.group_by(
                 [
@@ -123,8 +125,12 @@ async def refresh_provider_asset_attribute_data(
         end = dt.datetime.now()
         start = end - dt.timedelta(hours=default_lookback_hours)
         logger.info(
-            f"Start or end not provided, setting start to {start} and end to {end}."
+            f"Start or end not provided, setting start to {start} and end to {end} (default lookback: {default_lookback_hours}h)."
         )
+
+    # Log the processing time range
+    total_hours = (end - start).total_seconds() / 3600
+    logger.info(f"Processing provider asset attribute data from {start} to {end} (total range: {total_hours:.1f}h)")
 
     # Get an engine.
     engine = await get_engine()
