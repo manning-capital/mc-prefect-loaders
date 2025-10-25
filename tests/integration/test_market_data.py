@@ -1,27 +1,28 @@
 import os
 import sys
-import pytest
 import datetime as dt
 from typing import Any
 from unittest.mock import patch
+
+import pytest
 from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session
 from mc_postgres_db.models import (
-    ProviderType,
+    Asset,
     Provider,
     AssetType,
-    Asset,
+    ProviderType,
     ProviderAsset,
     ProviderAssetMarket,
 )
 
 sys.path.append(os.path.join(os.path.dirname(__file__), os.pardir))
 
-from src.market.provider_asset_market_flows import pull_provider_asset_market_data
-from src.market.market_data import KrakenProviderAssetMarketData
-from data.variables_base import create_global_concurrency_limit
 from mc_postgres_db.prefect.asyncio.tasks import get_engine
-from mc_postgres_db.testing.utilities import clear_database
+
+from data.variables_base import create_global_concurrency_limit
+from src.market.market_data import KrakenProviderAssetMarketData
+from src.market.provider_asset_market_flows import pull_provider_asset_market_data
 
 
 def create_base_data(engine: Engine):
@@ -224,9 +225,6 @@ async def test_pull_new_kraken_data_into_empty_database(fake_data: FakeData):
     # Get the engine.
     engine = await get_engine()
 
-    # Clear the database.
-    clear_database(engine)
-
     # Create the base data.
     (
         _,
@@ -253,14 +251,13 @@ async def test_pull_new_kraken_data_into_empty_database(fake_data: FakeData):
             "quote": "ZUSD",
         },
     }
+    use_time = dt.datetime.now()
     fake_data.market_data = {
         "XXBTZUSD": [
-            [int(dt.datetime.now().timestamp()), 100, 100, 100, 100, 100, 100, 100],
-            [int(dt.datetime.now().timestamp()), 100, 100, 100, 100, 100, 100, 100],
+            [int(use_time.timestamp()), 100, 100, 100, 100, 100, 100, 100],
         ],
         "XETHZUSD": [
-            [int(dt.datetime.now().timestamp()), 100, 100, 100, 100, 100, 100, 100],
-            [int(dt.datetime.now().timestamp()), 100, 100, 100, 100, 100, 100, 100],
+            [int(use_time.timestamp()), 100, 100, 100, 100, 100, 100, 100],
         ],
     }
 
@@ -276,7 +273,9 @@ async def test_pull_new_kraken_data_into_empty_database(fake_data: FakeData):
         )
 
         # Check the data.
-        assert len(provider_asset_market_data) == len(fake_data.market_data)
+        assert len(provider_asset_market_data) == sum(
+            len(data) for data in fake_data.market_data.values()
+        )
 
         # Check the BTC to USD data.
         btc_to_usd_data = session.execute(
@@ -312,9 +311,6 @@ async def test_pull_new_kraken_data_into_non_empty_database(fake_data: FakeData)
     # Get the engine.
     engine = await get_engine()
 
-    # Clear the database.
-    clear_database(engine)
-
     # Create the base data.
     (
         _,
@@ -331,10 +327,8 @@ async def test_pull_new_kraken_data_into_non_empty_database(fake_data: FakeData)
     fake_data.reset_data()
 
     # Add the fake data.
-    use_time = dt.datetime.fromtimestamp(
-        int(dt.datetime.now(dt.timezone.utc).timestamp()),
-        tz=dt.timezone.utc,
-    )
+    use_time = dt.datetime.now(dt.timezone.utc)
+    use_time = use_time.replace(microsecond=0)
     fake_data.asset_pairs = {
         "XXBTZUSD": {
             "base": "XXBT",
@@ -357,28 +351,8 @@ async def test_pull_new_kraken_data_into_non_empty_database(fake_data: FakeData)
                 300.0,
                 300.0,
             ],
-            [
-                int(use_time.timestamp()),
-                300.0,
-                300.0,
-                300.0,
-                300.0,
-                300.0,
-                300.0,
-                300.0,
-            ],
         ],
         "XETHZUSD": [
-            [
-                int(use_time.timestamp()),
-                300.0,
-                300.0,
-                300.0,
-                300.0,
-                300.0,
-                300.0,
-                300.0,
-            ],
             [
                 int(use_time.timestamp()),
                 300.0,
@@ -419,7 +393,9 @@ async def test_pull_new_kraken_data_into_non_empty_database(fake_data: FakeData)
         provider_asset_market_data = (
             session.execute(provider_asset_market_data_stmt).scalars().all()
         )
-        assert len(provider_asset_market_data) == len(fake_data.market_data)
+        assert len(provider_asset_market_data) == sum(
+            len(data) for data in fake_data.market_data.values()
+        )
 
         # Check the BTC to USD data.
         btc_to_usd_data = session.execute(
@@ -457,9 +433,6 @@ async def test_pull_new_kraken_data_into_empty_database_with_pair_that_does_not_
     # Get the engine.
     engine = await get_engine()
 
-    # Clear the database.
-    clear_database(engine)
-
     # Create the base data.
     (
         _,
@@ -476,10 +449,8 @@ async def test_pull_new_kraken_data_into_empty_database_with_pair_that_does_not_
     fake_data.reset_data()
 
     # Add the fake data.
-    use_time = dt.datetime.fromtimestamp(
-        int(dt.datetime.now(dt.timezone.utc).timestamp()),
-        tz=dt.timezone.utc,
-    )
+    use_time = dt.datetime.now(dt.timezone.utc)
+    use_time = use_time.replace(microsecond=0)
     fake_data.asset_pairs = {
         "1INCHUSD": {
             "base": "1INCH",
@@ -488,16 +459,6 @@ async def test_pull_new_kraken_data_into_empty_database_with_pair_that_does_not_
     }
     fake_data.market_data = {
         "1INCHUSD": [
-            [
-                int(use_time.timestamp()),
-                100.0,
-                100.0,
-                100.0,
-                100.0,
-                100.0,
-                100.0,
-                100.0,
-            ],
             [
                 int(use_time.timestamp()),
                 100.0,
@@ -521,7 +482,9 @@ async def test_pull_new_kraken_data_into_empty_database_with_pair_that_does_not_
         provider_asset_market_data = (
             session.execute(provider_asset_market_data_stmt).scalars().all()
         )
-        assert len(provider_asset_market_data) == len(fake_data.market_data)
+        assert len(provider_asset_market_data) == sum(
+            len(data) for data in fake_data.market_data.values()
+        )
 
         # Check the 1INCH to USD data.
         one_inch_usd_data = session.execute(

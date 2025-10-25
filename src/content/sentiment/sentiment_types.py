@@ -5,13 +5,14 @@ sys.path.append(
     os.path.join(os.path.dirname(__file__), os.pardir, os.pardir, os.pardir)
 )
 
-from src.content.sentiment.abstract import AbstractContentSentimentType
+import nltk
+import pandas as pd
 from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session
-from mc_postgres_db.models import ContentType, SentimentType
-import nltk
 from nltk.sentiment.vader import SentimentIntensityAnalyzer
-import pandas as pd
+from mc_postgres_db.models import ContentType, SentimentType
+
+from src.content.sentiment.abstract import AbstractContentSentimentType
 
 
 class NLTKVaderContentSentimentType(AbstractContentSentimentType):

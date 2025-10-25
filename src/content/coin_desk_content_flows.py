@@ -3,15 +3,17 @@ import sys
 
 sys.path.append(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir))
 
-import requests
 import datetime as dt
+
 import pandas as pd
-from prefect import flow, get_run_logger, task, serve
-from prefect.concurrency.asyncio import rate_limit
+import requests
+from prefect import flow, task, serve, get_run_logger
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-from mc_postgres_db.models import Provider, ProviderType, ProviderContent, ContentType
-from mc_postgres_db.prefect.asyncio.tasks import get_engine, set_data
+from mc_postgres_db.models import Provider, ContentType, ProviderType, ProviderContent
+from prefect.concurrency.asyncio import rate_limit
+from mc_postgres_db.prefect.asyncio.tasks import set_data, get_engine
+
 from src.shared.utils import compare_dataframes
 
 

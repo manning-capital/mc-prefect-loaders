@@ -12,15 +12,3 @@ wheels/
 # Jupyter Notebook checkpoints
 .ipynb_checkpoints/
 .DS_Store
-
-# Vscode
-.vscode/
-
-# Pytest
-.pytest_cache/
-
-# Ruff
-.ruff_cache/
-
-# Pyright
-.pyrightconfig.json

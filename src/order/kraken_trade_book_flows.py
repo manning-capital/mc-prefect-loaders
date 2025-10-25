@@ -5,17 +5,18 @@ sys.path.append(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, os.pardir)
 )
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone, timedelta
+
 import pandas as pd
 import requests
-from prefect import flow, get_run_logger, serve, task
-from prefect.artifacts import create_table_artifact
-from prefect.concurrency.asyncio import rate_limit
+from prefect import flow, task, serve, get_run_logger
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-
+from prefect.artifacts import create_table_artifact
 from mc_postgres_db.models import Provider, ProviderAssetOrder
-from mc_postgres_db.prefect.asyncio.tasks import get_engine, set_data
+from prefect.concurrency.asyncio import rate_limit
+from mc_postgres_db.prefect.asyncio.tasks import set_data, get_engine
+
 from src.shared.utils import get_base_url
 
 INTERVAL_SECONDS = 30

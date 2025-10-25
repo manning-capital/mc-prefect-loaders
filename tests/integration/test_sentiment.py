@@ -4,20 +4,21 @@ import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), os.pardir))
 
 import datetime as dt
+
 import pytest
 from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session
 from mc_postgres_db.models import (
     Provider,
-    ProviderContent,
-    ProviderType,
     ContentType,
+    ProviderType,
     SentimentType,
+    ProviderContent,
     ProviderContentSentiment,
 )
-from src.content.sentiment.content_sentiment_flows import refresh_content_sentiment
 from mc_postgres_db.prefect.asyncio.tasks import get_engine
-from mc_postgres_db.testing.utilities import clear_database
+
+from src.content.sentiment.content_sentiment_flows import refresh_content_sentiment
 
 
 async def create_base_data(
@@ -72,9 +73,6 @@ async def test_sentiment_analysis_added_for_existing_content_without_sentiment()
     # Get the engine.
     engine = await get_engine()
 
-    # Clear the database.
-    clear_database(engine)
-
     # Create the base data.
     _, provider, content_type, sentiment_type = await create_base_data(engine)
 
@@ -115,9 +113,6 @@ async def test_sentiment_analysis_added_for_existing_content_without_sentiment()
 async def test_sentiment_analysis_added_for_multiple_existing_content_without_sentiment():
     # Get the engine.
     engine = await get_engine()
-
-    # Clear the database.
-    clear_database(engine)
 
     # Create the base data.
     _, provider, content_type, sentiment_type = await create_base_data(engine)
@@ -191,9 +186,6 @@ async def test_sentiment_analysis_is_positive_for_positive_content():
     # Get the engine.
     engine = await get_engine()
 
-    # Clear the database.
-    clear_database(engine)
-
     # Create the base data.
     _, provider, content_type, sentiment_type = await create_base_data(engine)
 
@@ -235,9 +227,6 @@ async def test_sentiment_analysis_is_negative_for_negative_content():
     # Get the engine.
     engine = await get_engine()
 
-    # Clear the database.
-    clear_database(engine)
-
     # Create the base data.
     _, provider, content_type, sentiment_type = await create_base_data(engine)
 
@@ -278,9 +267,6 @@ async def test_sentiment_analysis_is_negative_for_negative_content():
 async def test_sentiment_analysis_not_added_for_existing_content_with_sentiment():
     # Get the engine.
     engine = await get_engine()
-
-    # Clear the database.
-    clear_database(engine)
 
     # Create the base data.
     _, provider, content_type, sentiment_type = await create_base_data(engine)
@@ -354,9 +340,6 @@ async def test_sentiment_analysis_not_added_for_existing_content_with_sentiment(
 async def test_sentiment_analysis_handles_existing_and_new_sentiment_entries_correctly():
     # Get the engine.
     engine = await get_engine()
-
-    # Clear the database.
-    clear_database(engine)
 
     # Create the base data.
     _, provider, content_type, sentiment_type = await create_base_data(engine)
@@ -517,9 +500,6 @@ async def test_sentiment_analysis_handles_existing_and_new_sentiment_entries_cor
 async def test_sentiment_analysis_handles_existing_partially_filled_sentiment_entries_correctly():
     # Get the engine.
     engine = await get_engine()
-
-    # Clear the database.
-    clear_database(engine)
 
     # Create the base data.
     _, provider, content_type, sentiment_type = await create_base_data(engine)

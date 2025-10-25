@@ -1,6 +1,7 @@
-from prefect import task
-import pandas as pd
 from typing import List, Tuple
+
+import pandas as pd
+from prefect import task
 from prefect.settings import PREFECT_API_URL
 
 

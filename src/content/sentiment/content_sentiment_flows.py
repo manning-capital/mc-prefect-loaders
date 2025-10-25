@@ -7,14 +7,16 @@ sys.path.append(
 
 import datetime as dt
 from typing import Optional
-from prefect import flow, task, serve
+
 import pandas as pd
+from prefect import flow, task, serve
+from sqlalchemy import or_, select
 from mc_postgres_db.models import ProviderContent, ProviderContentSentiment
-from sqlalchemy import select, or_
-from mc_postgres_db.prefect.asyncio.tasks import get_engine, set_data
+from prefect.cache_policies import NO_CACHE
+from mc_postgres_db.prefect.asyncio.tasks import set_data, get_engine
+
 from src.content.sentiment.abstract import AbstractContentSentimentType
 from src.content.sentiment.sentiment_types import NLTKVaderContentSentimentType
-from prefect.cache_policies import NO_CACHE
 
 
 @task(cache_policy=NO_CACHE)
