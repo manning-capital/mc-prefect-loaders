@@ -359,8 +359,8 @@ async def test_creation_of_provider_asset_when_asset_group_already_exists():
                     )
                     .options(joinedload(models.ProviderAssetGroup.members))
                 )
-                .scalars()
                 .unique()
+                .all()
             )
             assert len(provider_asset_groups) == 1
             provider_asset_group = provider_asset_groups[0]
@@ -493,9 +493,12 @@ async def test_parameter_recovery_of_statistical_pairs_trading_30_day_window():
         with Session(engine) as session:
             provider_asset_group = (
                 session.execute(
-                    select(models.ProviderAssetGroup).options(
-                        joinedload(models.ProviderAssetGroup.members)
+                    select(models.ProviderAssetGroup)
+                    .where(
+                        models.ProviderAssetGroup.asset_group_type_id
+                        == pairs_trading_asset_group_type.id
                     )
+                    .options(joinedload(models.ProviderAssetGroup.members))
                 )
                 .unique()
                 .scalar_one_or_none()
