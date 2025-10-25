@@ -160,7 +160,7 @@ async def get_data(
 
 
 @flow()
-async def pull_provider_asset_market_data(as_of_date: Optional[dt.date] = None):
+async def pull_provider_asset_market_data(as_of_date: Optional[dt.date] = None, batch_size: int = 10000):
     logger = get_run_logger()
 
     # If the as_of_date is not provided, set it to today.
@@ -185,8 +185,10 @@ async def pull_provider_asset_market_data(as_of_date: Optional[dt.date] = None):
         # Get the data for the instance.
         data = await get_data(market_data=instance, as_of_date=as_of_date)
 
-        # Save the data to the database.
-        await set_data(ProviderAssetMarket.__tablename__, data, operation_type="upsert")
+        # Save the data to the database. Batch by 10,000 rows at a time.
+        for i in range(0, len(data), batch_size):
+            batch = data.iloc[i : i + batch_size]
+            await set_data(ProviderAssetMarket.__tablename__, batch, operation_type="upsert")
 
 
 if __name__ == "__main__":

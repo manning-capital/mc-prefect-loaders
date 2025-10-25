@@ -499,3 +499,323 @@ async def test_pull_new_kraken_data_into_empty_database_with_pair_that_does_not_
         assert one_inch_usd_data.low == 100.0
         assert one_inch_usd_data.close == 100.0
         assert one_inch_usd_data.volume == 100.0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("batch_size", [1, 5, 10, 100, 1000])
+async def test_market_data_batching_with_different_batch_sizes(fake_data: FakeData, batch_size: int):
+    """Test that market data flow works correctly with different batch sizes."""
+    # Get the engine.
+    engine = await get_engine()
+
+    # Create the base data.
+    (
+        _,
+        _,
+        _,
+        kraken_provider_id,
+        btc_asset_id,
+        eth_asset_id,
+        usd_asset_id,
+        one_inch_asset_id,
+    ) = create_base_data(engine)
+
+    # Reset the fake data.
+    fake_data.reset_data()
+
+    # Create a larger dataset to test batching
+    use_time = dt.datetime.now(dt.timezone.utc)
+    use_time = use_time.replace(microsecond=0)
+    
+    # Create multiple data points for each pair to test batching
+    num_data_points = 25  # This will create 25 * 4 = 100 total records
+    fake_data.asset_pairs = {
+        "XXBTZUSD": {"base": "XXBT", "quote": "ZUSD"},
+        "XETHZUSD": {"base": "XETH", "quote": "ZUSD"},
+        "1INCHUSD": {"base": "1INCH", "quote": "ZUSD"},
+        "XETHXXBT": {"base": "XETH", "quote": "XXBT"},
+    }
+    
+    # Generate multiple timestamps and data points
+    market_data = {}
+    for pair_name in fake_data.asset_pairs.keys():
+        pair_data = []
+        for i in range(num_data_points):
+            timestamp = use_time + dt.timedelta(minutes=i)
+            pair_data.append([
+                int(timestamp.timestamp()),
+                100.0 + i,  # Vary the price slightly
+                100.0 + i,
+                100.0 + i,
+                100.0 + i,
+                100.0 + i,
+                100.0 + i,
+                100.0 + i,
+            ])
+        market_data[pair_name] = pair_data
+    
+    fake_data.market_data = market_data
+
+    # Pull the provider asset market data with the specified batch size
+    await pull_provider_asset_market_data(batch_size=batch_size)
+
+    # Verify the data was inserted correctly
+    with Session(engine) as session:
+        provider_asset_market_data_stmt = select(ProviderAssetMarket)
+        provider_asset_market_data = (
+            session.execute(provider_asset_market_data_stmt).scalars().all()
+        )
+
+        # Should have 100 total records (25 per pair * 4 pairs)
+        expected_total = sum(len(data) for data in fake_data.market_data.values())
+        assert len(provider_asset_market_data) == expected_total, f"Expected {expected_total} records, got {len(provider_asset_market_data)} for batch_size={batch_size}"
+
+        # Verify specific data points
+        btc_usd_records = session.execute(
+            select(ProviderAssetMarket).where(
+                ProviderAssetMarket.from_asset_id == usd_asset_id,
+                ProviderAssetMarket.to_asset_id == btc_asset_id,
+            )
+        ).scalars().all()
+        
+        assert len(btc_usd_records) == num_data_points, f"Expected {num_data_points} BTC/USD records, got {len(btc_usd_records)} for batch_size={batch_size}"
+        
+        # Check that prices are correctly varied
+        prices = [record.close for record in btc_usd_records]
+        assert min(prices) == 100.0, f"Expected min price 100.0, got {min(prices)} for batch_size={batch_size}"
+        assert max(prices) == 100.0 + num_data_points - 1, f"Expected max price {100.0 + num_data_points - 1}, got {max(prices)} for batch_size={batch_size}"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("batch_size", [10000])
+async def test_market_data_batching_edge_case_single_batch(fake_data: FakeData, batch_size: int):
+    """Test market data flow when all data fits in a single batch."""
+    # Get the engine.
+    engine = await get_engine()
+
+    # Create the base data.
+    (
+        _,
+        _,
+        _,
+        kraken_provider_id,
+        btc_asset_id,
+        eth_asset_id,
+        usd_asset_id,
+        _,
+    ) = create_base_data(engine)
+
+    # Reset the fake data.
+    fake_data.reset_data()
+
+    # Create small dataset that fits in one batch
+    use_time = dt.datetime.now(dt.timezone.utc)
+    use_time = use_time.replace(microsecond=0)
+    
+    fake_data.asset_pairs = {
+        "XXBTZUSD": {"base": "XXBT", "quote": "ZUSD"},
+        "XETHZUSD": {"base": "XETH", "quote": "ZUSD"},
+    }
+    
+    fake_data.market_data = {
+        "XXBTZUSD": [[int(use_time.timestamp()), 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0]],
+        "XETHZUSD": [[int(use_time.timestamp()), 200.0, 200.0, 200.0, 200.0, 200.0, 200.0, 200.0]],
+    }
+
+    # Use large batch size to ensure single batch
+    await pull_provider_asset_market_data(batch_size=batch_size)
+
+    # Verify the data was inserted correctly
+    with Session(engine) as session:
+        provider_asset_market_data_stmt = select(ProviderAssetMarket)
+        provider_asset_market_data = (
+            session.execute(provider_asset_market_data_stmt).scalars().all()
+        )
+
+        assert len(provider_asset_market_data) == 2, f"Expected 2 records, got {len(provider_asset_market_data)} for batch_size={batch_size}"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("batch_size", [1, 5, 10, 50])
+async def test_market_data_batching_data_integrity_across_batch_sizes(fake_data: FakeData, batch_size: int):
+    """Test that different batch sizes produce identical results."""
+    # Get the engine.
+    engine = await get_engine()
+
+    # Create the base data.
+    (
+        _,
+        _,
+        _,
+        kraken_provider_id,
+        btc_asset_id,
+        eth_asset_id,
+        usd_asset_id,
+        one_inch_asset_id,
+    ) = create_base_data(engine)
+
+    # Reset the fake data.
+    fake_data.reset_data()
+
+    # Create consistent test data
+    use_time = dt.datetime.now(dt.timezone.utc)
+    use_time = use_time.replace(microsecond=0)
+    
+    fake_data.asset_pairs = {
+        "XXBTZUSD": {"base": "XXBT", "quote": "ZUSD"},
+        "XETHZUSD": {"base": "XETH", "quote": "ZUSD"},
+        "1INCHUSD": {"base": "1INCH", "quote": "ZUSD"},
+    }
+    
+    # Create 15 data points per pair (45 total records)
+    num_data_points = 15
+    market_data = {}
+    for pair_name in fake_data.asset_pairs.keys():
+        pair_data = []
+        for i in range(num_data_points):
+            timestamp = use_time + dt.timedelta(minutes=i)
+            pair_data.append([
+                int(timestamp.timestamp()),
+                100.0 + i,
+                100.0 + i,
+                100.0 + i,
+                100.0 + i,
+                100.0 + i,
+                100.0 + i,
+                100.0 + i,
+            ])
+        market_data[pair_name] = pair_data
+    
+    fake_data.market_data = market_data
+
+    # Pull the provider asset market data with the specified batch size
+    await pull_provider_asset_market_data(batch_size=batch_size)
+
+    # Verify the data was inserted correctly
+    with Session(engine) as session:
+        provider_asset_market_data_stmt = select(ProviderAssetMarket)
+        provider_asset_market_data = (
+            session.execute(provider_asset_market_data_stmt).scalars().all()
+        )
+        
+        # Should have 45 total records (15 per pair * 3 pairs)
+        expected_total = sum(len(data) for data in fake_data.market_data.values())
+        assert len(provider_asset_market_data) == expected_total, f"Expected {expected_total} records, got {len(provider_asset_market_data)} for batch_size={batch_size}"
+        
+        # Verify specific data points
+        btc_usd_records = session.execute(
+            select(ProviderAssetMarket).where(
+                ProviderAssetMarket.from_asset_id == usd_asset_id,
+                ProviderAssetMarket.to_asset_id == btc_asset_id,
+            )
+        ).scalars().all()
+        
+        assert len(btc_usd_records) == num_data_points, f"Expected {num_data_points} BTC/USD records, got {len(btc_usd_records)} for batch_size={batch_size}"
+        
+        # Check that prices are correctly varied
+        prices = [record.close for record in btc_usd_records]
+        assert min(prices) == 100.0, f"Expected min price 100.0, got {min(prices)} for batch_size={batch_size}"
+        assert max(prices) == 100.0 + num_data_points - 1, f"Expected max price {100.0 + num_data_points - 1}, got {max(prices)} for batch_size={batch_size}"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("batch_size", [10])
+async def test_market_data_batching_with_empty_data(fake_data: FakeData, batch_size: int):
+    """Test market data flow behavior with empty data."""
+    # Get the engine.
+    engine = await get_engine()
+
+    # Create the base data.
+    create_base_data(engine)
+
+    # Reset the fake data.
+    fake_data.reset_data()
+
+    # Set empty data
+    fake_data.asset_pairs = {}
+    fake_data.market_data = {}
+
+    # Pull the provider asset market data
+    await pull_provider_asset_market_data(batch_size=batch_size)
+
+    # Verify no data was inserted
+    with Session(engine) as session:
+        provider_asset_market_data_stmt = select(ProviderAssetMarket)
+        provider_asset_market_data = (
+            session.execute(provider_asset_market_data_stmt).scalars().all()
+        )
+
+        assert len(provider_asset_market_data) == 0, f"Expected 0 records, got {len(provider_asset_market_data)} for batch_size={batch_size}"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("batch_size", [50])
+async def test_market_data_batching_with_large_dataset(fake_data: FakeData, batch_size: int):
+    """Test market data flow with a large dataset to verify batching works correctly."""
+    # Get the engine.
+    engine = await get_engine()
+
+    # Create the base data.
+    (
+        _,
+        _,
+        _,
+        kraken_provider_id,
+        btc_asset_id,
+        eth_asset_id,
+        usd_asset_id,
+        one_inch_asset_id,
+    ) = create_base_data(engine)
+
+    # Reset the fake data.
+    fake_data.reset_data()
+
+    # Create a large dataset
+    use_time = dt.datetime.now(dt.timezone.utc)
+    use_time = use_time.replace(microsecond=0)
+    
+    fake_data.asset_pairs = {
+        "XXBTZUSD": {"base": "XXBT", "quote": "ZUSD"},
+        "XETHZUSD": {"base": "XETH", "quote": "ZUSD"},
+        "1INCHUSD": {"base": "1INCH", "quote": "ZUSD"},
+        "XETHXXBT": {"base": "XETH", "quote": "XXBT"},
+    }
+    
+    # Create 100 data points per pair (400 total records)
+    num_data_points = 100
+    market_data = {}
+    for pair_name in fake_data.asset_pairs.keys():
+        pair_data = []
+        for i in range(num_data_points):
+            timestamp = use_time + dt.timedelta(minutes=i)
+            pair_data.append([
+                int(timestamp.timestamp()),
+                100.0 + i * 0.1,  # Small price increments
+                100.0 + i * 0.1,
+                100.0 + i * 0.1,
+                100.0 + i * 0.1,
+                100.0 + i * 0.1,
+                100.0 + i * 0.1,
+                100.0 + i * 0.1,
+            ])
+        market_data[pair_name] = pair_data
+    
+    fake_data.market_data = market_data
+
+    # Use small batch size to force multiple batches
+    await pull_provider_asset_market_data(batch_size=batch_size)
+
+    # Verify the data was inserted correctly
+    with Session(engine) as session:
+        provider_asset_market_data_stmt = select(ProviderAssetMarket)
+        provider_asset_market_data = (
+            session.execute(provider_asset_market_data_stmt).scalars().all()
+        )
+
+        expected_total = sum(len(data) for data in fake_data.market_data.values())
+        assert len(provider_asset_market_data) == expected_total, f"Expected {expected_total} records, got {len(provider_asset_market_data)} for batch_size={batch_size}"
+
+        # Verify we have the expected number of batches processed
+        # With 400 records and batch_size=50, we should have 8 batches
+        expected_batches = (expected_total + batch_size - 1) // batch_size
+        assert expected_batches == 8, f"Expected 8 batches for {expected_total} records with batch_size={batch_size}"
