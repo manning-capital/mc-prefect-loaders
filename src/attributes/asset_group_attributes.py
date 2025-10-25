@@ -64,7 +64,7 @@ class StatisticalPairsTrading(AbstractAssetGroupType):
 
     @property
     def maximum_provider_asset_market_pairs(self) -> int:
-        return 5000
+        return 15000
 
     @property
     def provider_asset_market_columns(self) -> set:
