@@ -94,7 +94,9 @@ async def refresh_by_asset_group_type(
     task_runner=DaskTaskRunner(cluster_kwargs={"n_workers": 4, "threads_per_worker": 2})
 )
 async def refresh_provider_asset_attribute_data(
-    start: Optional[dt.datetime] = None, end: Optional[dt.datetime] = None, default_lookback_hours: int = 24
+    start: Optional[dt.datetime] = None,
+    end: Optional[dt.datetime] = None,
+    default_lookback_hours: int = 24,
 ):
     """
     Refresh the provider asset attribute data.
