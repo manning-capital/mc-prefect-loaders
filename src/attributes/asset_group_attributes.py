@@ -64,7 +64,7 @@ class StatisticalPairsTrading(AbstractAssetGroupType):
 
     @property
     def maximum_provider_asset_market_pairs(self) -> int:
-        return 5000
+        return 15000
 
     @property
     def provider_asset_market_columns(self) -> set:
@@ -117,16 +117,26 @@ class StatisticalPairsTrading(AbstractAssetGroupType):
                 else np.inf
             )
 
-            # Check if the number of combinations is greater than the maximum number of provider asset groups.
-            if n_combinations > self.maximum_provider_asset_market_pairs:
-                raise ValueError(
-                    f"The number of combinations is greater than the maximum number of provider asset groups: {n_combinations} > {self.maximum_provider_asset_market_pairs}"
-                )
+            # Group members by from_asset to ensure we only pair assets with the same from_asset
+            # This allows pairs to form across different providers as long as they have the same from_asset
+            grouped_members = {}
+            for provider, from_asset, to_asset in provider_asset_market_group_members:
+                if from_asset not in grouped_members:
+                    grouped_members[from_asset] = []
+                grouped_members[from_asset].append((provider, from_asset, to_asset))
 
-            # Get the combinations.
-            combinations = itertools.combinations(
-                provider_asset_market_group_members, 2
-            )
+            # Generate combinations only within each group (same from_asset)
+            all_combinations = []
+            for group_members in grouped_members.values():
+                if len(group_members) >= 2:  # Need at least 2 members to form a pair
+                    group_combinations = itertools.combinations(group_members, 2)
+                    all_combinations.extend(group_combinations)
+
+            # Limit the combinations to the maximum allowed if needed
+            if len(all_combinations) > self.maximum_provider_asset_market_pairs:
+                all_combinations = all_combinations[
+                    : self.maximum_provider_asset_market_pairs
+                ]
 
             return set(
                 models.ProviderAssetGroup(
@@ -134,18 +144,18 @@ class StatisticalPairsTrading(AbstractAssetGroupType):
                     is_active=True,
                     members=[
                         models.ProviderAssetGroupMember(
-                            provider_id=pair[0].id,
-                            provider=pair[0],
-                            from_asset_id=pair[1].id,
-                            from_asset=pair[1],
-                            to_asset_id=pair[2].id,
-                            to_asset=pair[2],
+                            provider_id=member[0].id,
+                            provider=member[0],
+                            from_asset_id=member[1].id,
+                            from_asset=member[1],
+                            to_asset_id=member[2].id,
+                            to_asset=member[2],
                             order=i + 1,
                         )
-                        for i, pair in enumerate(combination)
+                        for i, member in enumerate(combination)
                     ],
                 )
-                for combination in combinations
+                for combination in all_combinations
             )
 
     def calculate_group_attributes(

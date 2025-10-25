@@ -299,6 +299,29 @@ class AbstractAssetGroupType(ABC):
         else:
             unique_combinations = pl.DataFrame()
 
+        # If no unique combinations, return empty dataframe with expected schema
+        if unique_combinations.is_empty():
+            # Create empty DataFrame with the expected schema
+            # This includes columns from datetime_grid, unique_combinations, and market_data
+            expected_columns = {
+                "timestamp": pl.Datetime,
+                "provider_asset_group_id": pl.Int64,
+                "order": pl.Int64,
+                "provider_id": pl.Int64,
+                "from_asset_id": pl.Int64,
+                "to_asset_id": pl.Int64,
+            }
+            # Add market columns
+            market_columns: list[str] = [
+                col.name for col in self.provider_asset_market_columns
+            ]
+            for col in market_columns:
+                expected_columns[col] = (
+                    pl.Float64
+                )  # Assuming market data columns are numeric
+
+            return pl.DataFrame(schema=expected_columns)
+
         # Get the market data.
         market_columns: list[str] = [
             col.name for col in self.provider_asset_market_columns
