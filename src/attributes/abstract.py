@@ -268,11 +268,9 @@ class AbstractAssetGroupType(ABC):
         end_naive = end.replace(tzinfo=None)
         floor_start = align_timestamp_to_resolution(start_naive, self.resolution)
         ceil_end = align_timestamp_to_resolution(end_naive, self.resolution)
-        datetime_grid = pl.DataFrame().with_columns(
-            pl.datetime_range(
-                floor_start, ceil_end, interval=self.resolution, eager=True
-            ).alias("timestamp")
-        )
+        datetime_grid = pl.datetime_range(
+            floor_start, ceil_end, interval=self.resolution, eager=True
+        ).to_frame("timestamp")
 
         # Get unique provider asset group member combinations
         unique_combinations: pl.DataFrame = pl.read_database(
