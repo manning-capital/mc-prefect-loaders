@@ -188,8 +188,8 @@ def generate_cointegrated_pair(
     n_points: int = 1000,
     alpha: float = 10.0,
     beta: float = 1.5,
-    drift: float = 0.00001,
-    volatility: float = 0.0001,
+    drift: float = 0.05,
+    volatility: float = 0.2,
     theta: float = 0.5,
     mu: float = 0.1,
     sigma: float = 2.0,
@@ -209,6 +209,8 @@ def generate_cointegrated_pair(
         n_points: Number of data points
         alpha: Linear relationship intercept
         beta: Linear relationship slope
+        drift: GBM drift
+        volatility: GBM volatility
         theta: OU process asymptotic mean
         mu: OU process mean reversion speed
         sigma: OU process volatility
@@ -222,14 +224,14 @@ def generate_cointegrated_pair(
     set_random_seed(seed)
 
     # Generate base price series using GBM
-    gbm_params = GBMParams(mu=drift, sigma=volatility)  # Reasonable market parameters
+    gbm_params = GBMParams(mu=drift, sigma=volatility)
     gbm = GeometricBrownianMotion(params=gbm_params)
     close_1_prices = gbm.simulate(N=n_points, N_simulated=1, X_0=start_price)[0]
 
     # Generate OU residuals with proper parameters for mean reversion
     ou_params = OUParams(mu=mu, theta=theta, sigma=sigma)
     ou = OrnsteinUhlenbeck(params=ou_params)
-    residuals = ou.simulate(N=n_points, N_simulated=1, X_0=0.0)[0]
+    residuals = ou.simulate(N=n_points, N_simulated=1, X_0=theta)[0]
 
     # Create cointegrated close_2
     close_2_prices = alpha + beta * close_1_prices + residuals

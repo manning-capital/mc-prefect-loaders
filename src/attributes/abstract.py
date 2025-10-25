@@ -218,6 +218,22 @@ class AbstractAssetGroupType(ABC):
             connection=self.engine,
         )
 
+        # Filter out duplicate order values within each group, keeping only the first occurrence
+        filtered_combinations = []
+        for group_id in unique_combinations["provider_asset_group_id"].unique():
+            group_data = unique_combinations.filter(
+                pl.col("provider_asset_group_id") == group_id
+            )
+            # Keep only the first occurrence of each order value within this group
+            deduplicated_group = group_data.group_by("order").first()
+            filtered_combinations.append(deduplicated_group)
+
+        # Combine all filtered groups back into a single DataFrame
+        if filtered_combinations:
+            unique_combinations = pl.concat(filtered_combinations)
+        else:
+            unique_combinations = pl.DataFrame()
+
         # Get the market data.
         market_columns: list[str] = [
             col.name for col in self.provider_asset_market_columns
