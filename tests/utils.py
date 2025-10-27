@@ -199,6 +199,7 @@ def generate_cointegrated_pair(
     start_price: float = 100.0,
     resolution: dt.timedelta = dt.timedelta(minutes=1),
     seed: int = 42,
+    start_time: dt.datetime = dt.datetime(2024, 1, 1, 12, 0, 0),
 ) -> pl.DataFrame:
     """
     Generate synthetic cointegrated pair data for testing.
@@ -220,6 +221,7 @@ def generate_cointegrated_pair(
         start_price: Starting price for close_1
         resolution: Time resolution
         seed: Random seed for reproducibility
+        start_time: Start time for the series
 
     Returns:
         pl.DataFrame with columns: timestamp, close_1, close_2
@@ -240,7 +242,6 @@ def generate_cointegrated_pair(
     close_2_prices = alpha + beta * close_1_prices + residuals
 
     # Create timestamps
-    start_time = dt.datetime(2024, 1, 1, 12, 0, 0)
     timestamps = [start_time + i * resolution for i in range(n_points)]
 
     return pl.DataFrame(
@@ -252,6 +253,7 @@ def generate_non_cointegrated_pair(
     n_points: int = 1000,
     resolution: dt.timedelta = dt.timedelta(minutes=1),
     seed: int = 42,
+    start_time: dt.datetime = dt.datetime(2024, 1, 1, 12, 0, 0),
 ) -> pl.DataFrame:
     """
     Generate two independent price series that are NOT cointegrated.
@@ -277,7 +279,6 @@ def generate_non_cointegrated_pair(
     close_2_prices = gbm_2.simulate(N=n_points, N_simulated=1, X_0=200.0)[0]
 
     # Create timestamps
-    start_time = dt.datetime(2024, 1, 1, 12, 0, 0)
     timestamps = [start_time + i * resolution for i in range(n_points)]
 
     return pl.DataFrame(
@@ -290,6 +291,7 @@ def generate_trending_pair(
     trend_strength: float = 0.1,
     resolution: dt.timedelta = dt.timedelta(minutes=1),
     seed: int = 42,
+    start_time: dt.datetime = dt.datetime(2024, 1, 1, 12, 0, 0),
 ) -> pl.DataFrame:
     """
     Generate price series with strong trending behavior.
@@ -299,6 +301,7 @@ def generate_trending_pair(
         trend_strength: Strength of the trend (0.1 = 10% per time unit)
         resolution: Time resolution
         seed: Random seed for reproducibility
+        start_time: Start time for the series
 
     Returns:
         pl.DataFrame with columns: timestamp, close_1, close_2
@@ -306,9 +309,7 @@ def generate_trending_pair(
     set_random_seed(seed)
 
     # Generate trending series
-    timestamps = [
-        dt.datetime(2024, 1, 1, 12, 0, 0) + i * resolution for i in range(n_points)
-    ]
+    timestamps = [start_time + i * resolution for i in range(n_points)]
 
     # Create strong upward trend
     trend_1 = np.linspace(100, 100 * (1 + trend_strength * n_points), n_points)
@@ -335,6 +336,7 @@ def generate_market_data_dataframe(
     cointegrated_params: dict = None,
     resolution: dt.timedelta = dt.timedelta(minutes=1),
     seed: int = 42,
+    start_time: dt.datetime = dt.datetime(2024, 1, 1, 12, 0, 0),
 ) -> pd.DataFrame:
     """
     Generate a pandas DataFrame for ProviderAssetMarket data with configurable assets and cointegrated pairs.
@@ -386,8 +388,7 @@ def generate_market_data_dataframe(
         cointegrated_params = {**default_cointegrated_params, **cointegrated_params}
 
     # Generate timestamps
-    start_time = dt.datetime(2024, 1, 1, 12, 0, 0)
-    timestamps = [start_time + i * resolution for i in range(n_points)]
+    timestamps = pd.date_range(start=start_time, periods=n_points, freq=resolution)
 
     # Generate cointegrated pairs
     cointegrated_pairs = []
@@ -410,6 +411,7 @@ def generate_market_data_dataframe(
             start_price=cointegrated_params["start_price"],
             resolution=resolution,
             seed=seed + i,  # Different seed for each pair
+            start_time=start_time,
         )
 
         # Add first asset (close_1)

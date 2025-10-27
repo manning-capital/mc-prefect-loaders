@@ -5,7 +5,6 @@ import polars as pl
 import humanize
 import mc_postgres_db.models as models
 from prefect import flow, task, get_run_logger
-from prefect_dask import DaskTaskRunner
 from prefect.cache_policies import NO_CACHE
 from mc_postgres_db.prefect.asyncio.tasks import set_data, get_engine
 
@@ -42,6 +41,7 @@ async def refresh_by_asset_group_type(
     # Calculate the attributes for the provider asset market data dataframes.
     for window in asset_group_type.windows:
         window_duration = humanize.naturaldelta(window)
+
         logger.info(
             f"Processing {len(provider_asset_group_id_list)} groups in batches of {batch_size} for {window_duration} window..."
         )
@@ -71,19 +71,25 @@ async def refresh_by_asset_group_type(
             logger.info(
                 f"Calculating attributes for batch {batch_num}/{total_batches} with {window_duration} window..."
             )
-            for name, data in provider_asset_group_members_df.group_by(
+            for ids, data in provider_asset_group_members_df.group_by(
                 [
                     "provider_asset_group_id",
                 ]
             ):
+                # Get the provider asset group id.
+                provider_asset_group_id = ids[0]
+
                 # Check if the data is empty.
                 if data.is_empty():
-                    logger.info(f"Data is empty for {name}, skipping...")
+                    logger.info(
+                        f"Data is empty for provider asset group {provider_asset_group_id}, skipping..."
+                    )
                     continue
 
                 # Calculate the attributes for the provider asset group market data dataframes.
-                logger.info(f"Calculating attributes for {name}...")
-                provider_asset_group_id = name[0]
+                logger.info(
+                    f"Calculating attributes for provider asset group {provider_asset_group_id}..."
+                )
                 attribute_results = asset_group_type.calculate_group_attributes(
                     window=window,
                     step=asset_group_type.step,

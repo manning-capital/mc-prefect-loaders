@@ -17,7 +17,10 @@ from sqlalchemy.engine import Engine
 from statsmodels.tsa.stattools import coint
 from statsmodels.regression.linear_model import OLS
 
-from src.attributes.abstract import AbstractAssetGroupType
+from src.attributes.abstract import (
+    AbstractAssetGroupType,
+    align_timestamp_to_resolution,
+)
 from src.attributes.stochastic_models import OrnsteinUhlenbeck
 
 
@@ -174,7 +177,10 @@ class StatisticalPairsTrading(AbstractAssetGroupType):
         start_time = timestamps[0]
         end_time = timestamps[-1]
         anchor_timestamps: list[dt.datetime] = []
+
+        # Start at the first possible anchor (start_time + window) and align to step resolution
         current_time = start_time + window
+        current_time = align_timestamp_to_resolution(current_time, step)
         while current_time <= end_time:
             anchor_timestamps.append(current_time)
             current_time = current_time + step
