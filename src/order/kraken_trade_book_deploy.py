@@ -45,7 +45,9 @@ if __name__ == "__main__":
         concurrency_limit=ConcurrencyLimitConfig(
             limit=1, collision_strategy=ConcurrencyLimitStrategy.CANCEL_NEW
         ),
-        schedule=Interval(INTERVAL_SECONDS, anchor_date=datetime(2000, 1, 1, 0, 0, 0)),
+        schedule=Interval(
+            INTERVAL_SECONDS, anchor_date=datetime(2000, 1, 1, 0, 0, 0), active=False
+        ),
         build=False,
         push=False,
     )
@@ -68,6 +70,7 @@ if __name__ == "__main__":
         ),
         schedule=Schedule(
             cron="0 0 * * *",  # Daily at midnight
+            active=False,
         ),
         build=False,
         push=False,
