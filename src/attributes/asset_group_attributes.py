@@ -8,11 +8,13 @@ import datetime as dt
 import itertools
 
 import numpy as np
-import polars as pl
+import pandas as pd
+import dask.dataframe as dd
 import statsmodels.api as sm
 import mc_postgres_db.models as models
 from sqlalchemy import select
 from sqlalchemy.orm import Session, aliased
+from dask.distributed import Client
 from sqlalchemy.engine import Engine
 from statsmodels.tsa.stattools import coint
 from statsmodels.regression.linear_model import OLS
@@ -162,15 +164,19 @@ class StatisticalPairsTrading(AbstractAssetGroupType):
                 for combination in all_combinations
             )
 
-    def calculate_group_attributes(
-        self, window: dt.timedelta, step: dt.timedelta, group_market_df: pl.DataFrame
-    ) -> pl.DataFrame:
+    async def calculate_group_attributes(
+        self,
+        window: dt.timedelta,
+        step: dt.timedelta,
+        group_market_df: dd.DataFrame,
+        client: Client,
+    ) -> dd.DataFrame:
         """
         Calculate the attributes for the provider asset group data dataframe.
         """
 
         # Determine the timestamps we will use as window anchors based on the step size (timedelta)
-        timestamps = group_market_df["timestamp"].sort().to_numpy()
+        timestamps = group_market_df["timestamp"].compute().sort_values().to_numpy()
         start_time = timestamps[0]
         end_time = timestamps[-1]
         anchor_timestamps: list[dt.datetime] = []
@@ -215,14 +221,14 @@ class StatisticalPairsTrading(AbstractAssetGroupType):
         for i, anchor_timestamp in enumerate(anchor_timestamps):
             try:
                 # Get the window of data.
-                group_market_df_window = group_market_df.filter(
-                    pl.col("timestamp") >= anchor_timestamp - window,
-                    pl.col("timestamp") <= anchor_timestamp,
-                )
+                group_market_df_window = group_market_df[
+                    (group_market_df["timestamp"] >= anchor_timestamp - window)
+                    & (group_market_df["timestamp"] <= anchor_timestamp)
+                ]
 
                 # Get the close columns.
-                close_1 = group_market_df_window["close_1"].to_numpy()
-                close_2 = group_market_df_window["close_2"].to_numpy()
+                close_1 = group_market_df_window["close_1"].compute().to_numpy()
+                close_2 = group_market_df_window["close_2"].compute().to_numpy()
 
                 # Run the cointegration test.
                 cointegration_result = coint(close_1, close_2)
@@ -268,18 +274,21 @@ class StatisticalPairsTrading(AbstractAssetGroupType):
                 p_value_array[i] = np.nan
                 continue
 
-        # Return the provider asset group data dataframe.
-        return pl.DataFrame(
-            {
-                models.ProviderAssetGroupAttribute.timestamp.name: timestamp_anchor_array,
-                models.ProviderAssetGroupAttribute.linear_fit_beta.name: beta_array,
-                models.ProviderAssetGroupAttribute.linear_fit_alpha.name: alpha_array,
-                models.ProviderAssetGroupAttribute.linear_fit_mse.name: mse_array,
-                models.ProviderAssetGroupAttribute.linear_fit_r_squared.name: r_squared_array,
-                models.ProviderAssetGroupAttribute.linear_fit_r_squared_adj.name: r_squared_adj_array,
-                models.ProviderAssetGroupAttribute.ou_theta.name: theta_array,
-                models.ProviderAssetGroupAttribute.ou_mu.name: mu_array,
-                models.ProviderAssetGroupAttribute.ou_sigma.name: sigma_array,
-                models.ProviderAssetGroupAttribute.cointegration_p_value.name: p_value_array,
-            }
+        # Return the provider asset group data dataframe as a dask dataframe.
+        return dd.from_pandas(
+            pd.DataFrame(
+                {
+                    models.ProviderAssetGroupAttribute.timestamp.name: timestamp_anchor_array,
+                    models.ProviderAssetGroupAttribute.linear_fit_beta.name: beta_array,
+                    models.ProviderAssetGroupAttribute.linear_fit_alpha.name: alpha_array,
+                    models.ProviderAssetGroupAttribute.linear_fit_mse.name: mse_array,
+                    models.ProviderAssetGroupAttribute.linear_fit_r_squared.name: r_squared_array,
+                    models.ProviderAssetGroupAttribute.linear_fit_r_squared_adj.name: r_squared_adj_array,
+                    models.ProviderAssetGroupAttribute.ou_theta.name: theta_array,
+                    models.ProviderAssetGroupAttribute.ou_mu.name: mu_array,
+                    models.ProviderAssetGroupAttribute.ou_sigma.name: sigma_array,
+                    models.ProviderAssetGroupAttribute.cointegration_p_value.name: p_value_array,
+                }
+            ),
+            npartitions=1,
         )

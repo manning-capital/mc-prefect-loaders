@@ -18,7 +18,7 @@ def prefect_test_fixture():
 @pytest.fixture(autouse=True, scope="session")
 def dask_cluster_fixture():
     with LocalCluster(n_workers=2, threads_per_worker=1) as cluster:
-        with Client(cluster) as client:
+        with Client(cluster, asynchronous=True) as client:
             yield client
 
 

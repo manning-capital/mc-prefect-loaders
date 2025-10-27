@@ -1,11 +1,34 @@
 import datetime as dt
 from abc import ABC, abstractmethod
 
-import polars as pl
+import dask
+import pandas as pd
+import dask.dataframe as dd
 import mc_postgres_db.models as models
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session, joinedload
+from dask.distributed import Client
 from sqlalchemy.engine import Engine
+
+
+def convert_timedelta_to_dask_frequency(timedelta: dt.timedelta) -> str:
+    """
+    Convert a timedelta to a dask frequency string.
+    """
+    total_seconds = timedelta.total_seconds()
+
+    if total_seconds >= 86400:
+        days = int(total_seconds / 86400)
+        return f"{days}D"
+    elif total_seconds >= 3600:
+        hours = int(total_seconds / 3600)
+        return f"{hours}H"
+    elif total_seconds >= 60:
+        minutes = int(total_seconds / 60)
+        return f"{minutes}T"
+    else:
+        seconds = int(total_seconds)
+        return f"{seconds}S"
 
 
 def align_timestamp_to_resolution(
@@ -164,15 +187,16 @@ class AbstractAssetGroupType(ABC):
         return [provider.id for provider in self.providers]
 
     @abstractmethod
-    def calculate_group_attributes(
-        self, window: int, step: int, group_market_df: pl.DataFrame
-    ) -> pl.DataFrame:
+    async def calculate_group_attributes(
+        self, window: int, step: int, group_market_df: dd.DataFrame, client: Client
+    ) -> dd.DataFrame:
         """
-        Calculate the attributes for the provider asset group data dataframes.
+        Calculate the attributes for the provider asset group market data dataframes.
         Args:
             window: The window size for the rolling window.
             step: The step size for the rolling window.
             group_market_df: The dataframe with the provider asset market data for the group.
+            client: The Dask client (kept for consistency, .compute() will use it automatically).
         Returns:
             The dataframe with the attributes calculated for each provider asset group data dataframe.
         """
@@ -255,26 +279,33 @@ class AbstractAssetGroupType(ABC):
 
             return set(provider_asset_groups)
 
-    def get_provider_asset_group_market_data(
-        self, provider_asset_group_ids: set[int], start: dt.datetime, end: dt.datetime
-    ) -> pl.DataFrame:
+    async def get_provider_asset_group_market_data(
+        self,
+        client: Client,
+        provider_asset_group_ids: set[int],
+        start: dt.datetime,
+        end: dt.datetime,
+    ) -> dd.DataFrame:
         """
         Get the provider asset group market data.
         """
 
-        # Generate the datetime grid. Should be a polars dataframe with a timestamp column.
         # Align start and end times to the natural boundaries of the resolution
         start_naive = start.replace(tzinfo=None)
         end_naive = end.replace(tzinfo=None)
         floor_start = align_timestamp_to_resolution(start_naive, self.resolution)
         ceil_end = align_timestamp_to_resolution(end_naive, self.resolution)
-        datetime_grid = pl.datetime_range(
-            floor_start, ceil_end, interval=self.resolution, eager=True
-        ).to_frame("timestamp")
-
-        # Get unique provider asset group member combinations
-        unique_combinations: pl.DataFrame = pl.read_database(
-            query=select(
+        freq = convert_timedelta_to_dask_frequency(self.resolution)
+        provider_asset_group_ids_list = list(provider_asset_group_ids)
+        
+        # Generate the datetime grid using SQLAlchemy select
+        datetime_grid_subquery = select(
+            func.generate_series(floor_start, ceil_end, freq).label("timestamp")
+        ).subquery(name="datetime_grid")
+        
+        # Build unique combinations query using SQLAlchemy ORM
+        unique_combinations_subquery = (
+            select(
                 models.ProviderAssetGroupMember.provider_asset_group_id,
                 models.ProviderAssetGroupMember.order,
                 models.ProviderAssetGroupMember.provider_id,
@@ -284,92 +315,120 @@ class AbstractAssetGroupType(ABC):
             .distinct()
             .where(
                 models.ProviderAssetGroupMember.provider_asset_group_id.in_(
-                    provider_asset_group_ids
+                    provider_asset_group_ids_list
+                )
+            )
+            .subquery(name="unique_combinations")
+        )
+        
+        # Create the cross join query combining datetime grid with unique combinations
+        datetime_grid_subquery_final = select(
+            datetime_grid_subquery.c.timestamp,
+            unique_combinations_subquery.c.provider_asset_group_id,
+            unique_combinations_subquery.c.order,
+            unique_combinations_subquery.c.provider_id,
+            unique_combinations_subquery.c.from_asset_id,
+            unique_combinations_subquery.c.to_asset_id,
+        ).select_from(
+            datetime_grid_subquery,
+            unique_combinations_subquery
+        ).subquery(name="grid_with_combinations")
+        
+        # Get unique combinations for market data filtering
+        unique_combinations_df: pd.DataFrame = pd.read_sql(
+            select(
+                models.ProviderAssetGroupMember.provider_asset_group_id,
+                models.ProviderAssetGroupMember.order,
+                models.ProviderAssetGroupMember.provider_id,
+                models.ProviderAssetGroupMember.from_asset_id,
+                models.ProviderAssetGroupMember.to_asset_id,
+            )
+            .distinct()
+            .where(
+                models.ProviderAssetGroupMember.provider_asset_group_id.in_(
+                    provider_asset_group_ids_list
                 )
             ),
-            connection=self.engine,
+            self.engine,
+            index_col="provider_asset_group_id",
         )
 
-        # Filter out duplicate order values within each group, keeping only the first occurrence
-        filtered_combinations = []
-        for group_id in unique_combinations["provider_asset_group_id"].unique():
-            group_data = unique_combinations.filter(
-                pl.col("provider_asset_group_id") == group_id
-            )
-            # Keep only the first occurrence of each order value within this group
-            deduplicated_group = group_data.group_by("order").first()
-            filtered_combinations.append(deduplicated_group)
+        # Get unique IDs for market data filtering
+        unique_provider_ids = unique_combinations_df["provider_id"].unique().tolist()
+        unique_from_asset_ids = (
+            unique_combinations_df["from_asset_id"].unique().tolist()
+        )
+        unique_to_asset_ids = unique_combinations_df["to_asset_id"].unique().tolist()
 
-        # Combine all filtered groups back into a single DataFrame
-        if filtered_combinations:
-            unique_combinations = pl.concat(filtered_combinations)
-        else:
-            unique_combinations = pl.DataFrame()
-
-        # If no unique combinations, return empty dataframe with expected schema
-        if unique_combinations.is_empty():
-            # Create empty DataFrame with the expected schema
-            # This includes columns from datetime_grid, unique_combinations, and market_data
-            expected_columns = {
-                "timestamp": pl.Datetime,
-                "provider_asset_group_id": pl.Int64,
-                "order": pl.Int64,
-                "provider_id": pl.Int64,
-                "from_asset_id": pl.Int64,
-                "to_asset_id": pl.Int64,
-            }
-            # Add market columns
-            market_columns: list[str] = [
-                col.name for col in self.provider_asset_market_columns
-            ]
-            for col in market_columns:
-                expected_columns[col] = (
-                    pl.Float64
-                )  # Assuming market data columns are numeric
-
-            return pl.DataFrame(schema=expected_columns)
-
-        # Get the market data.
+        # Get market columns
         market_columns: list[str] = [
             col.name for col in self.provider_asset_market_columns
         ]
-        market_data: pl.DataFrame = pl.read_database(
-            query=select(
-                models.ProviderAssetMarket.timestamp,
-                models.ProviderAssetMarket.provider_id,
-                models.ProviderAssetMarket.from_asset_id,
-                models.ProviderAssetMarket.to_asset_id,
-                *[getattr(models.ProviderAssetMarket, col) for col in market_columns],
-            ).where(
-                models.ProviderAssetMarket.timestamp >= floor_start,
-                models.ProviderAssetMarket.timestamp <= ceil_end,
-                models.ProviderAssetMarket.provider_id.in_(
-                    unique_combinations["provider_id"]
-                ),
-                models.ProviderAssetMarket.from_asset_id.in_(
-                    unique_combinations["from_asset_id"]
-                ),
-                models.ProviderAssetMarket.to_asset_id.in_(
-                    unique_combinations["to_asset_id"]
-                ),
-            ),
-            connection=self.engine,
+        
+        # Build the AS-OF join query using LATERAL join in PostgreSQL
+        market_data_subquery = select(
+            models.ProviderAssetMarket.timestamp,
+            models.ProviderAssetMarket.provider_id,
+            models.ProviderAssetMarket.from_asset_id,
+            models.ProviderAssetMarket.to_asset_id,
+            *[getattr(models.ProviderAssetMarket, col) for col in market_columns],
+        ).where(
+            models.ProviderAssetMarket.timestamp >= floor_start,
+            models.ProviderAssetMarket.timestamp <= ceil_end,
+            models.ProviderAssetMarket.provider_id.in_(unique_provider_ids),
+            models.ProviderAssetMarket.from_asset_id.in_(unique_from_asset_ids),
+            models.ProviderAssetMarket.to_asset_id.in_(unique_to_asset_ids),
+        ).subquery(name="market_data")
+        
+        # Use LATERAL join for AS-OF join (backward fill)
+        # This gets the most recent market data point <= the grid timestamp
+        from sqlalchemy.sql import text
+        
+        # Convert queries to strings
+        grid_query_str = str(datetime_grid_subquery_final.compile(compile_kwargs={"literal_binds": True}))
+        market_query_str = str(market_data_subquery.compile(compile_kwargs={"literal_binds": True}))
+        
+        # Build the final query with string formatting
+        as_of_join_sql = f"""
+            SELECT 
+                g.timestamp,
+                g.provider_asset_group_id,
+                g."order",
+                g.provider_id,
+                g.from_asset_id,
+                g.to_asset_id,
+                m.*
+            FROM (
+                SELECT timestamp, provider_asset_group_id, "order", provider_id, from_asset_id, to_asset_id
+                FROM ({grid_query_str}) AS subgrid
+            ) g
+            LEFT JOIN LATERAL (
+                SELECT *
+                FROM ({market_query_str}) AS m
+                WHERE m.provider_id = g.provider_id
+                  AND m.from_asset_id = g.from_asset_id
+                  AND m.to_asset_id = g.to_asset_id
+                  AND m.timestamp <= g.timestamp
+                ORDER BY m.timestamp DESC
+                LIMIT 1
+            ) m ON TRUE
+            WHERE g.timestamp >= '{start_naive}'
+              AND g.timestamp <= '{end_naive}'
+        """
+        
+        as_of_join_query = text(as_of_join_sql)
+        
+        # Execute the AS-OF join query
+        result_df = pd.read_sql(
+            as_of_join_query,
+            self.engine,
+            index_col="timestamp"
         )
+        
+        # Drop rows where market data is null (AS-OF join didn't find a match)
+        output = result_df.dropna()
 
-        # Join the datetime grid with the unique combinations and then the market data.
-        output: pl.DataFrame = datetime_grid.join(unique_combinations, how="cross")
-        output = output.join_asof(
-            market_data,
-            on="timestamp",
-            by=[
-                "provider_id",
-                "from_asset_id",
-                "to_asset_id",
-            ],
-            strategy="backward",
-        )
-
-        # Filter to requested time range and drop nulls
+        # Define key columns for ordering
         key_columns = [
             "provider_asset_group_id",
             "order",
@@ -377,25 +436,25 @@ class AbstractAssetGroupType(ABC):
             "from_asset_id",
             "to_asset_id",
         ]
-        output = output.filter(
-            (pl.col("timestamp") >= start_naive) & (pl.col("timestamp") <= end_naive)
-        ).drop_nulls()
 
         # Select the columns, keeping the timestamp and key columns first.
-        output = output.select(
-            "timestamp",
-            *key_columns,
-            *[
-                col
-                for col in output.columns
-                if col not in key_columns and col not in ["timestamp"]
-            ],
-        )
+        output = output[
+            [
+                "timestamp",
+                *key_columns,
+                *[
+                    col
+                    for col in output.columns
+                    if col not in key_columns and col not in ["timestamp"]
+                ],
+            ]
+        ]
 
         # Transform the data on order keeping the provider asset group id column and pivoting the other columns.
-        pivotted_output = output.pivot(
-            on="order",
+        # Since output is now a pandas DataFrame, use pandas pivot_table
+        pivotted_output = output.pivot_table(
             index=["timestamp", "provider_asset_group_id"],
+            columns="order",
             values=[
                 col
                 for col in output.columns
@@ -403,7 +462,8 @@ class AbstractAssetGroupType(ABC):
             ],
         )
 
-        return pivotted_output
+        # Convert back to Dask DataFrame for the return type
+        return dd.from_pandas(pivotted_output.reset_index(), npartitions=1)
 
     def get_desired_provider_asset_group_ids(
         self, start_date: dt.date, end_date: dt.date
