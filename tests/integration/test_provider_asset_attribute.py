@@ -2040,7 +2040,7 @@ async def test_misaligned_input_range_with_1hour_step():
         end_time = dt.datetime(2025, 1, 1, 6, 30, 43)
         df = generate_market_data_dataframe(
             to_asset_ids=[btc_asset.id, eth_asset.id],
-            n_points=9 * 60,  
+            n_points=9 * 60,
             n_cointegrated_pairs=1,
             provider_id=kraken_provider.id,
             from_asset_id=usd_asset.id,
@@ -2054,7 +2054,8 @@ async def test_misaligned_input_range_with_1hour_step():
                 "sigma": 2.0,
                 "start_price": 100.0,
             },
-            start_time=start_time.replace(hour=0, minute=0, second=0, microsecond=0) - window,
+            start_time=start_time.replace(hour=0, minute=0, second=0, microsecond=0)
+            - window,
             resolution=dt.timedelta(minutes=1),
         )
 
