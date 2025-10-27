@@ -68,7 +68,7 @@ class StatisticalPairsTrading(AbstractAssetGroupType):
 
     @property
     def batch_size(self) -> int:
-        return 100  # Process 100 pairs at a time
+        return 10
 
     @property
     def provider_asset_market_columns(self) -> set:
