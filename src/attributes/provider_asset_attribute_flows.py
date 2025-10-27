@@ -5,7 +5,6 @@ import polars as pl
 import humanize
 import mc_postgres_db.models as models
 from prefect import flow, task, get_run_logger
-from prefect_dask import DaskTaskRunner
 from prefect.cache_policies import NO_CACHE
 from mc_postgres_db.prefect.asyncio.tasks import set_data, get_engine
 
@@ -105,7 +104,6 @@ async def refresh_by_asset_group_type(
                 await set_data(
                     models.ProviderAssetGroupAttribute.__tablename__, to_set_data
                 )
-
 
 
 @flow()

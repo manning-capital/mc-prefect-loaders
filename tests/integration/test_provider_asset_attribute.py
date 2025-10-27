@@ -1832,3 +1832,291 @@ async def test_insufficient_members_for_pairing():
                 f"Expected no pairs since there's only one asset (BTC/USD), "
                 f"but got {len(provider_asset_groups)} pairs"
             )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "step,window,start_time,n_points,validator",
+    [
+        (
+            dt.timedelta(hours=1),
+            dt.timedelta(hours=6),
+            dt.datetime(2025, 1, 1, 0, 30, 43),
+            500,
+            lambda ts: (ts.minute == 0, f"Timestamp {ts} should have minute=0"),
+        ),
+        (
+            dt.timedelta(minutes=15),
+            dt.timedelta(hours=1),
+            dt.datetime(2025, 1, 1, 0, 7, 23),
+            200,
+            lambda ts: (
+                ts.minute in [0, 15, 30, 45],
+                f"Timestamp {ts} should have minute in [0, 15, 30, 45], got {ts.minute}",
+            ),
+        ),
+        (
+            dt.timedelta(hours=6),
+            dt.timedelta(days=1),
+            dt.datetime(2025, 1, 1, 2, 15, 47),
+            1000,
+            lambda ts: (
+                ts.hour in [0, 6, 12, 18],
+                f"Timestamp {ts} should have hour in [0, 6, 12, 18], got {ts.hour}",
+            ),
+        ),
+        (
+            dt.timedelta(days=1),
+            dt.timedelta(days=7),
+            dt.datetime(2025, 1, 1, 14, 32, 15),
+            2000,
+            lambda ts: (ts.hour == 0, f"Timestamp {ts} should have hour=0"),
+        ),
+    ],
+)
+async def test_timestamp_alignment(step, window, start_time, n_points, validator):
+    """Test that timestamps are properly aligned to step boundaries."""
+    with (
+        patch(
+            "src.attributes.asset_group_attributes.StatisticalPairsTrading.windows",
+            new_callable=lambda: [window],
+        ),
+        patch(
+            "src.attributes.asset_group_attributes.StatisticalPairsTrading.step",
+            new_callable=lambda: step,
+        ),
+        patch(
+            "src.attributes.asset_group_attributes.StatisticalPairsTrading.resolution",
+            new_callable=lambda: dt.timedelta(minutes=1),
+        ),
+    ):
+        # Get the engine.
+        engine = await get_engine()
+
+        # Create the provider and asset data.
+        _, kraken_provider = await sample_provider_data(engine)
+        (
+            _,
+            _,
+            btc_asset,
+            eth_asset,
+            usd_asset,
+        ) = await sample_asset_data(engine)
+
+        # Create the pairs trading asset group type.
+        with Session(engine) as session:
+            pairs_trading_asset_group_type = models.AssetGroupType(
+                symbol="STATISTICAL_PAIRS_TRADING",
+                name="Statistical Pairs Trading",
+                description="Group type for pairs trading attributes like the cointegration and hedge ratio.",
+                is_active=True,
+            )
+            session.add(pairs_trading_asset_group_type)
+            session.commit()
+            session.refresh(pairs_trading_asset_group_type)
+
+        # Generate market data starting at a misaligned time
+        df = generate_market_data_dataframe(
+            to_asset_ids=[btc_asset.id, eth_asset.id],
+            n_points=n_points,
+            n_cointegrated_pairs=1,
+            provider_id=kraken_provider.id,
+            from_asset_id=usd_asset.id,
+            cointegrated_params={
+                "alpha": 10.0,
+                "beta": 1.5,
+                "drift": 0.05,
+                "volatility": 0.2,
+                "theta": 0.5,
+                "mu": 0.1,
+                "sigma": 2.0,
+                "start_price": 100.0,
+            },
+        )
+        df["timestamp"] = pd.date_range(start=start_time, periods=len(df), freq="1min")
+
+        # Set the data.
+        await set_data(models.ProviderAssetMarket.__tablename__, df)
+
+        # Create the provider asset group.
+        with Session(engine) as session:
+            provider_asset_group = models.ProviderAssetGroup(
+                asset_group_type_id=pairs_trading_asset_group_type.id,
+                is_active=True,
+                members=[
+                    models.ProviderAssetGroupMember(
+                        provider_id=kraken_provider.id,
+                        from_asset_id=usd_asset.id,
+                        to_asset_id=btc_asset.id,
+                        order=1,
+                    ),
+                    models.ProviderAssetGroupMember(
+                        provider_id=kraken_provider.id,
+                        from_asset_id=usd_asset.id,
+                        to_asset_id=eth_asset.id,
+                        order=2,
+                    ),
+                ],
+            )
+            session.add(provider_asset_group)
+            session.commit()
+            session.refresh(provider_asset_group)
+
+        # Refresh the provider asset attribute data.
+        await refresh_provider_asset_attribute_data(
+            start=df["timestamp"].min(),
+            end=df["timestamp"].max(),
+        )
+
+        # Check the timestamps in ProviderAssetGroupAttribute
+        with Session(engine) as session:
+            attributes_df = pd.read_sql(
+                select(models.ProviderAssetGroupAttribute).where(
+                    models.ProviderAssetGroupAttribute.provider_asset_group_id
+                    == provider_asset_group.id
+                ),
+                con=engine,
+            )
+
+        # Verify all timestamps are properly aligned
+        for timestamp in attributes_df["timestamp"]:
+            condition, error_msg = validator(timestamp)
+            assert condition, error_msg
+
+            # These checks apply to all timestamps
+            assert timestamp.second == 0, f"Timestamp {timestamp} should have second=0"
+            assert timestamp.microsecond == 0, (
+                f"Timestamp {timestamp} should have microsecond=0"
+            )
+
+
+@pytest.mark.asyncio
+async def test_misaligned_input_range_with_1hour_step():
+    """Test specific example: start=2025-01-01 00:30:43, end=2025-01-01 04:30:43, step=1 hour
+    Verify generated timestamps are 01:00:00, 02:00:00, 03:00:00, 04:00:00."""
+    with (
+        patch(
+            "src.attributes.asset_group_attributes.StatisticalPairsTrading.windows",
+            new_callable=lambda: [dt.timedelta(hours=6)],
+        ),
+        patch(
+            "src.attributes.asset_group_attributes.StatisticalPairsTrading.step",
+            new_callable=lambda: dt.timedelta(hours=1),
+        ),
+        patch(
+            "src.attributes.asset_group_attributes.StatisticalPairsTrading.resolution",
+            new_callable=lambda: dt.timedelta(minutes=1),
+        ),
+    ):
+        # Get the engine.
+        engine = await get_engine()
+
+        # Create the provider and asset data.
+        _, kraken_provider = await sample_provider_data(engine)
+        (
+            _,
+            _,
+            btc_asset,
+            eth_asset,
+            usd_asset,
+        ) = await sample_asset_data(engine)
+
+        # Create the pairs trading asset group type.
+        with Session(engine) as session:
+            pairs_trading_asset_group_type = models.AssetGroupType(
+                symbol="STATISTICAL_PAIRS_TRADING",
+                name="Statistical Pairs Trading",
+                description="Group type for pairs trading attributes like the cointegration and hedge ratio.",
+                is_active=True,
+            )
+            session.add(pairs_trading_asset_group_type)
+            session.commit()
+            session.refresh(pairs_trading_asset_group_type)
+
+        # Generate market data for the exact scenario: start=00:30:43, end=04:30:43
+        start_time = dt.datetime(2025, 1, 1, 0, 30, 43)
+        end_time = dt.datetime(2025, 1, 1, 4, 30, 43)
+        df = generate_market_data_dataframe(
+            to_asset_ids=[btc_asset.id, eth_asset.id],
+            n_points=240,  # 4 hours worth of 1-minute data
+            n_cointegrated_pairs=1,
+            provider_id=kraken_provider.id,
+            from_asset_id=usd_asset.id,
+            cointegrated_params={
+                "alpha": 10.0,
+                "beta": 1.5,
+                "drift": 0.05,
+                "volatility": 0.2,
+                "theta": 0.5,
+                "mu": 0.1,
+                "sigma": 2.0,
+                "start_price": 100.0,
+            },
+        )
+        df["timestamp"] = pd.date_range(start=start_time, end=end_time, freq="1min")
+
+        # Set the data.
+        await set_data(models.ProviderAssetMarket.__tablename__, df)
+
+        # Create the provider asset group.
+        with Session(engine) as session:
+            provider_asset_group = models.ProviderAssetGroup(
+                asset_group_type_id=pairs_trading_asset_group_type.id,
+                is_active=True,
+                members=[
+                    models.ProviderAssetGroupMember(
+                        provider_id=kraken_provider.id,
+                        from_asset_id=usd_asset.id,
+                        to_asset_id=btc_asset.id,
+                        order=1,
+                    ),
+                    models.ProviderAssetGroupMember(
+                        provider_id=kraken_provider.id,
+                        from_asset_id=usd_asset.id,
+                        to_asset_id=eth_asset.id,
+                        order=2,
+                    ),
+                ],
+            )
+            session.add(provider_asset_group)
+            session.commit()
+            session.refresh(provider_asset_group)
+
+        # Refresh the provider asset attribute data.
+        await refresh_provider_asset_attribute_data(
+            start=start_time,
+            end=end_time,
+        )
+
+        # Check the timestamps in ProviderAssetGroupAttribute
+        with Session(engine) as session:
+            attributes_df = pd.read_sql(
+                select(models.ProviderAssetGroupAttribute).where(
+                    models.ProviderAssetGroupAttribute.provider_asset_group_id
+                    == provider_asset_group.id
+                ),
+                con=engine,
+            )
+
+        # Verify timestamps are exactly 01:00:00, 02:00:00, 03:00:00, 04:00:00
+        expected_timestamps = {
+            dt.datetime(2025, 1, 1, 1, 0, 0),
+            dt.datetime(2025, 1, 1, 2, 0, 0),
+            dt.datetime(2025, 1, 1, 3, 0, 0),
+            dt.datetime(2025, 1, 1, 4, 0, 0),
+        }
+
+        actual_timestamps = set(attributes_df["timestamp"].dt.to_pydatetime())
+
+        # Check that expected timestamps are present (allowing for more if window captures more data)
+        assert expected_timestamps.issubset(actual_timestamps), (
+            f"Expected at least {expected_timestamps}, but got {actual_timestamps}"
+        )
+
+        # Verify all timestamps are aligned to hour boundaries
+        for timestamp in actual_timestamps:
+            assert timestamp.minute == 0, f"Timestamp {timestamp} should have minute=0"
+            assert timestamp.second == 0, f"Timestamp {timestamp} should have second=0"
+            assert timestamp.microsecond == 0, (
+                f"Timestamp {timestamp} should have microsecond=0"
+            )
