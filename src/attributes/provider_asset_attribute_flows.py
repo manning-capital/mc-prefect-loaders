@@ -41,6 +41,7 @@ async def refresh_by_asset_group_type(
     # Calculate the attributes for the provider asset market data dataframes.
     for window in asset_group_type.windows:
         window_duration = humanize.naturaldelta(window)
+
         logger.info(
             f"Processing {len(provider_asset_group_id_list)} groups in batches of {batch_size} for {window_duration} window..."
         )

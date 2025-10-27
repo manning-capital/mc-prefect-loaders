@@ -181,7 +181,6 @@ class StatisticalPairsTrading(AbstractAssetGroupType):
         # Start at the first possible anchor (start_time + window) and align to step resolution
         current_time = start_time + window
         current_time = align_timestamp_to_resolution(current_time, step)
-
         while current_time <= end_time:
             anchor_timestamps.append(current_time)
             current_time = current_time + step
