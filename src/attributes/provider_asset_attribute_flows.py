@@ -107,9 +107,7 @@ async def refresh_by_asset_group_type(
                 )
 
 
-@flow(
-    task_runner=DaskTaskRunner(cluster_kwargs={"n_workers": 4, "threads_per_worker": 2})
-)
+@flow()
 async def refresh_provider_asset_attribute_data(
     start: Optional[dt.datetime] = None,
     end: Optional[dt.datetime] = None,
