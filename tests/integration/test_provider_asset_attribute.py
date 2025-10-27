@@ -2051,9 +2051,10 @@ async def test_misaligned_input_range_with_1hour_step():
                 "mu": 0.1,
                 "sigma": 2.0,
                 "start_price": 100.0,
+                "start_time": start_time,
             },
+            start_time=start_time,
         )
-        df["timestamp"] = pd.date_range(start=start_time, end=end_time, freq="1min")
 
         # Set the data.
         await set_data(models.ProviderAssetMarket.__tablename__, df)

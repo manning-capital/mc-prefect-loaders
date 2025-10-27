@@ -335,6 +335,7 @@ def generate_market_data_dataframe(
     cointegrated_params: dict = None,
     resolution: dt.timedelta = dt.timedelta(minutes=1),
     seed: int = 42,
+    start_time: dt.datetime = dt.datetime(2024, 1, 1, 12, 0, 0),
 ) -> pd.DataFrame:
     """
     Generate a pandas DataFrame for ProviderAssetMarket data with configurable assets and cointegrated pairs.
@@ -386,8 +387,7 @@ def generate_market_data_dataframe(
         cointegrated_params = {**default_cointegrated_params, **cointegrated_params}
 
     # Generate timestamps
-    start_time = dt.datetime(2024, 1, 1, 12, 0, 0)
-    timestamps = [start_time + i * resolution for i in range(n_points)]
+    timestamps = pd.date_range(start=start_time, periods=n_points, freq=resolution)
 
     # Generate cointegrated pairs
     cointegrated_pairs = []
