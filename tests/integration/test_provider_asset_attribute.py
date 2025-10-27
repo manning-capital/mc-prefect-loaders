@@ -1995,10 +1995,11 @@ async def test_misaligned_input_range_with_1hour_step():
     """Test specific example: start=2025-01-01 00:30:43, end=2025-01-01 06:30:43, step=1 hour
     Verify generated timestamps align to hour boundaries (01:00:00, 02:00:00, 03:00:00, 04:00:00, 05:00:00, 06:00:00).
     Note: This test is skipped because it requires data before the start time due to the window size."""
+    window = dt.timedelta(hours=3)
     with (
         patch(
             "src.attributes.asset_group_attributes.StatisticalPairsTrading.windows",
-            new_callable=lambda: [dt.timedelta(hours=3)],
+            new_callable=lambda: [window],
         ),
         patch(
             "src.attributes.asset_group_attributes.StatisticalPairsTrading.step",
@@ -2039,7 +2040,7 @@ async def test_misaligned_input_range_with_1hour_step():
         end_time = dt.datetime(2025, 1, 1, 6, 30, 43)
         df = generate_market_data_dataframe(
             to_asset_ids=[btc_asset.id, eth_asset.id],
-            n_points=360,  # 6 hours worth of 1-minute data
+            n_points=9 * 60,  
             n_cointegrated_pairs=1,
             provider_id=kraken_provider.id,
             from_asset_id=usd_asset.id,
@@ -2052,9 +2053,9 @@ async def test_misaligned_input_range_with_1hour_step():
                 "mu": 0.1,
                 "sigma": 2.0,
                 "start_price": 100.0,
-                "start_time": start_time,
             },
-            start_time=start_time,
+            start_time=start_time.replace(hour=0, minute=0, second=0, microsecond=0) - window,
+            resolution=dt.timedelta(minutes=1),
         )
 
         # Set the data.
@@ -2093,10 +2094,7 @@ async def test_misaligned_input_range_with_1hour_step():
         # Check the timestamps in ProviderAssetGroupAttribute
         with Session(engine) as session:
             attributes_df = pd.read_sql(
-                select(models.ProviderAssetGroupAttribute).where(
-                    models.ProviderAssetGroupAttribute.provider_asset_group_id
-                    == provider_asset_group.id
-                ),
+                select(models.ProviderAssetGroupAttribute),
                 con=engine,
             )
 
