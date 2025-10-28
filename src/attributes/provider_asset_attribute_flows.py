@@ -1,3 +1,4 @@
+import asyncio
 import datetime as dt
 from typing import Optional
 
@@ -13,6 +14,39 @@ from src.attributes.asset_group_attributes import StatisticalPairsTrading
 
 
 @task(cache_policy=NO_CACHE)
+async def calculate_attributes(
+    asset_group_type: AbstractAssetGroupType,
+    provider_asset_group_id: int,
+    window: dt.timedelta,
+    market_data: pl.DataFrame,
+):
+    """
+    Calculate the attributes for the provider asset group market data dataframes.
+    """
+    logger = get_run_logger()
+
+    # Calculate the attributes for the provider asset group market data dataframes.
+    logger.info(
+        f"Calculating attributes for provider asset group {provider_asset_group_id}..."
+    )
+    attribute_results = asset_group_type.calculate_group_attributes(
+        window=window,
+        step=asset_group_type.step,
+        group_market_df=market_data,
+    )
+    attribute_results = attribute_results.with_columns(
+        pl.lit(provider_asset_group_id, dtype=pl.Int64).alias(
+            models.ProviderAssetGroupAttribute.provider_asset_group_id.name
+        ),
+        pl.lit(int(window.total_seconds()), dtype=pl.Int64).alias(
+            models.ProviderAssetGroupAttribute.lookback_window_seconds.name
+        ),
+    )
+
+    return attribute_results
+
+
+@task(cache_policy=NO_CACHE)
 async def refresh_by_asset_group_type(
     asset_group_type: AbstractAssetGroupType, start: dt.datetime, end: dt.datetime
 ):
@@ -20,9 +54,6 @@ async def refresh_by_asset_group_type(
     Refresh the provider asset attribute data.
     """
     logger = get_run_logger()
-
-    # Get an engine.
-    engine = await get_engine()
 
     # Refresh the provider asset groups.
     logger.info(
@@ -68,6 +99,7 @@ async def refresh_by_asset_group_type(
             )
 
             # Calculate the attributes for the provider asset group market data dataframes.
+            futures = []
             logger.info(
                 f"Calculating attributes for batch {batch_num}/{total_batches} with {window_duration} window..."
             )
@@ -79,37 +111,21 @@ async def refresh_by_asset_group_type(
                 # Get the provider asset group id.
                 provider_asset_group_id = ids[0]
 
-                # Check if the data is empty.
-                if data.is_empty():
-                    logger.info(
-                        f"Data is empty for provider asset group {provider_asset_group_id}, skipping..."
-                    )
-                    continue
-
-                # Calculate the attributes for the provider asset group market data dataframes.
-                logger.info(
-                    f"Calculating attributes for provider asset group {provider_asset_group_id}..."
+                # Calculate the attributes for the provider asset group market data dataframe.
+                result = calculate_attributes(
+                    asset_group_type, provider_asset_group_id, window, data
                 )
-                attribute_results = asset_group_type.calculate_group_attributes(
-                    window=window,
-                    step=asset_group_type.step,
-                    group_market_df=data,
-                )
-                attribute_results = attribute_results.with_columns(
-                    pl.lit(provider_asset_group_id, dtype=pl.Int64).alias(
-                        models.ProviderAssetGroupAttribute.provider_asset_group_id.name
-                    ),
-                    pl.lit(int(window.total_seconds()), dtype=pl.Int64).alias(
-                        models.ProviderAssetGroupAttribute.lookback_window_seconds.name
-                    ),
-                )
+                futures.append(result)
 
-                # Drop nulls before setting the data.
-                to_set_data = attribute_results.drop_nulls().to_pandas()
+            # Calculate the attributes for the provider asset group market data dataframes.
+            results = await asyncio.gather(*futures)
 
-                # Set the data.
+            # Set the data if there are any results.
+            if len(results) > 0:
+                results_df = pl.concat(results)
                 await set_data(
-                    models.ProviderAssetGroupAttribute.__tablename__, to_set_data
+                    models.ProviderAssetGroupAttribute.__tablename__,
+                    results_df.to_pandas(),
                 )
 
 
@@ -141,15 +157,20 @@ async def refresh_provider_asset_attribute_data(
     # Get an engine.
     engine = await get_engine()
 
-    # Initialize the asset group type.
-    asset_group_types = [StatisticalPairsTrading(engine)]
+    try:
+        # Initialize the asset group type.
+        asset_group_types = [StatisticalPairsTrading(engine)]
 
-    # Refresh the provider asset attribute data for each asset group type.
-    for asset_group_type in asset_group_types:
-        logger.info(
-            f"Refreshing the provider asset attribute data for {asset_group_type.asset_group_type.name}..."
-        )
-        await refresh_by_asset_group_type(asset_group_type, start=start, end=end)
+        # Refresh the provider asset attribute data for each asset group type.
+        for asset_group_type in asset_group_types:
+            logger.info(
+                f"Refreshing the provider asset attribute data for {asset_group_type.asset_group_type.name}..."
+            )
+            await refresh_by_asset_group_type(asset_group_type, start=start, end=end)
+    finally:
+        # Dispose the engine to release database connections back to the pool
+        engine.dispose()
+        logger.info("Disposed database engine connection pool")
 
 
 if __name__ == "__main__":

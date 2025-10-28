@@ -172,27 +172,32 @@ async def pull_provider_asset_market_data(
     # Get an engine.
     engine = await get_engine()
 
-    # Collect all types of provider asset market data.
-    data_classes = [KrakenProviderAssetMarketData]
+    try:
+        # Collect all types of provider asset market data.
+        data_classes = [KrakenProviderAssetMarketData]
 
-    # Create an instance of each provider asset market data class.
-    data_instances = [data_class(engine) for data_class in data_classes]
+        # Create an instance of each provider asset market data class.
+        data_instances = [data_class(engine) for data_class in data_classes]
 
-    # Get the data for each provider asset market data instance.
-    for instance in data_instances:
-        logger.info(
-            f"Getting data for the provider type {instance.__class__.__name__}..."
-        )
-
-        # Get the data for the instance.
-        data = await get_data(market_data=instance, as_of_date=as_of_date)
-
-        # Save the data to the database. Batch by 10,000 rows at a time.
-        for i in range(0, len(data), batch_size):
-            batch = data.iloc[i : i + batch_size]
-            await set_data(
-                ProviderAssetMarket.__tablename__, batch, operation_type="upsert"
+        # Get the data for each provider asset market data instance.
+        for instance in data_instances:
+            logger.info(
+                f"Getting data for the provider type {instance.__class__.__name__}..."
             )
+
+            # Get the data for the instance.
+            data = await get_data(market_data=instance, as_of_date=as_of_date)
+
+            # Save the data to the database. Batch by 10,000 rows at a time.
+            for i in range(0, len(data), batch_size):
+                batch = data.iloc[i : i + batch_size]
+                await set_data(
+                    ProviderAssetMarket.__tablename__, batch, operation_type="upsert"
+                )
+    finally:
+        # Dispose the engine to release database connections back to the pool
+        engine.dispose()
+        logger.info("Disposed database engine connection pool")
 
 
 if __name__ == "__main__":

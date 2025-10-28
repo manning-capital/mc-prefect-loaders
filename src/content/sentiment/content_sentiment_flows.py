@@ -9,7 +9,7 @@ import datetime as dt
 from typing import Optional
 
 import pandas as pd
-from prefect import flow, task, serve
+from prefect import flow, task, serve, get_run_logger
 from sqlalchemy import or_, select
 from mc_postgres_db.models import ProviderContent, ProviderContentSentiment
 from prefect.cache_policies import NO_CACHE
@@ -88,6 +88,8 @@ async def get_unprocessed_content_sentiment_data(
 async def refresh_content_sentiment(
     from_date: Optional[dt.date] = None, to_date: Optional[dt.date] = None
 ):
+    logger = get_run_logger()
+
     # Set the from_date and to_date if they are not provided.
     if from_date is None:
         from_date = dt.date.today()
@@ -101,32 +103,37 @@ async def refresh_content_sentiment(
     # Get the engine.
     engine = await get_engine()
 
-    # Get the sentiment types.
-    sentiment_types = [
-        NLTKVaderContentSentimentType(engine),
-    ]
-
-    # Get the sentiment data for the content.
-    for sentiment_type in sentiment_types:
-        # Get the content sentiment data that hasn't been saved yet.
-        content_sentiment_data = await get_unprocessed_content_sentiment_data(
-            from_date,
-            to_date,
-            sentiment_type,
-        )
+    try:
+        # Get the sentiment types.
+        sentiment_types = [
+            NLTKVaderContentSentimentType(engine),
+        ]
 
         # Get the sentiment data for the content.
-        content_series = pd.Series(content_sentiment_data["content"].astype(str))
-        sentiment_data = sentiment_type.get_sentiment_data(content_series)
-        sentiment_data["provider_content_id"] = content_sentiment_data["id"]
-        sentiment_data["sentiment_type_id"] = sentiment_type.get_sentiment_type_id()
+        for sentiment_type in sentiment_types:
+            # Get the content sentiment data that hasn't been saved yet.
+            content_sentiment_data = await get_unprocessed_content_sentiment_data(
+                from_date,
+                to_date,
+                sentiment_type,
+            )
 
-        # Save the content sentiment data to the database.
-        await set_data(
-            ProviderContentSentiment.__tablename__,
-            sentiment_data,
-            operation_type="upsert",
-        )
+            # Get the sentiment data for the content.
+            content_series = pd.Series(content_sentiment_data["content"].astype(str))
+            sentiment_data = sentiment_type.get_sentiment_data(content_series)
+            sentiment_data["provider_content_id"] = content_sentiment_data["id"]
+            sentiment_data["sentiment_type_id"] = sentiment_type.get_sentiment_type_id()
+
+            # Save the content sentiment data to the database.
+            await set_data(
+                ProviderContentSentiment.__tablename__,
+                sentiment_data,
+                operation_type="upsert",
+            )
+    finally:
+        # Dispose the engine to release database connections back to the pool
+        engine.dispose()
+        logger.info("Disposed database engine connection pool")
 
 
 if __name__ == "__main__":
