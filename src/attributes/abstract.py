@@ -356,6 +356,7 @@ class AbstractAssetGroupType(ABC):
                 ),
             ),
             connection=self.engine,
+            batch_size=50_000,  # Read in batches of 50k rows to manage memory
         )
 
         # Join the datetime grid with the unique combinations and then the market data.
