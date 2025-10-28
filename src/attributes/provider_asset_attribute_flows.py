@@ -21,9 +21,6 @@ async def refresh_by_asset_group_type(
     """
     logger = get_run_logger()
 
-    # Get an engine.
-    engine = await get_engine()
-
     # Refresh the provider asset groups.
     logger.info(
         f"Refreshing the provider asset groups for {asset_group_type.asset_group_type.name}..."
@@ -141,15 +138,20 @@ async def refresh_provider_asset_attribute_data(
     # Get an engine.
     engine = await get_engine()
 
-    # Initialize the asset group type.
-    asset_group_types = [StatisticalPairsTrading(engine)]
+    try:
+        # Initialize the asset group type.
+        asset_group_types = [StatisticalPairsTrading(engine)]
 
-    # Refresh the provider asset attribute data for each asset group type.
-    for asset_group_type in asset_group_types:
-        logger.info(
-            f"Refreshing the provider asset attribute data for {asset_group_type.asset_group_type.name}..."
-        )
-        await refresh_by_asset_group_type(asset_group_type, start=start, end=end)
+        # Refresh the provider asset attribute data for each asset group type.
+        for asset_group_type in asset_group_types:
+            logger.info(
+                f"Refreshing the provider asset attribute data for {asset_group_type.asset_group_type.name}..."
+            )
+            await refresh_by_asset_group_type(asset_group_type, start=start, end=end)
+    finally:
+        # Dispose the engine to release database connections back to the pool
+        engine.dispose()
+        logger.info("Disposed database engine connection pool")
 
 
 if __name__ == "__main__":

@@ -26,6 +26,10 @@ async def test_batching_creates_provider_asset_group_attributes():
             "src.attributes.asset_group_attributes.StatisticalPairsTrading.windows",
             new_callable=lambda: [dt.timedelta(hours=1)],
         ),
+        patch(
+            "src.attributes.asset_group_attributes.StatisticalPairsTrading.step",
+            dt.timedelta(hours=1),
+        ),
         patch.object(StatisticalPairsTrading, "batch_size", return_value=2),
     ):
         # Get the engine.
@@ -124,6 +128,10 @@ async def test_attribute_data_consistency_across_batches():
         patch(
             "src.attributes.asset_group_attributes.StatisticalPairsTrading.windows",
             new_callable=lambda: [dt.timedelta(hours=1)],
+        ),
+        patch(
+            "src.attributes.asset_group_attributes.StatisticalPairsTrading.step",
+            dt.timedelta(hours=1),
         ),
         patch.object(StatisticalPairsTrading, "batch_size", return_value=2),
     ):
@@ -275,6 +283,10 @@ async def test_batching_with_multiple_asset_groups():
             "src.attributes.asset_group_attributes.StatisticalPairsTrading.windows",
             new_callable=lambda: [dt.timedelta(hours=1)],
         ),
+        patch(
+            "src.attributes.asset_group_attributes.StatisticalPairsTrading.step",
+            dt.timedelta(hours=1),
+        ),
         patch.object(
             StatisticalPairsTrading, "batch_size", return_value=1
         ),  # Force multiple batches
@@ -425,6 +437,10 @@ async def test_batching_edge_case_single_batch():
             "src.attributes.asset_group_attributes.StatisticalPairsTrading.windows",
             new_callable=lambda: [dt.timedelta(hours=1)],
         ),
+        patch(
+            "src.attributes.asset_group_attributes.StatisticalPairsTrading.step",
+            dt.timedelta(hours=1),
+        ),
         patch.object(
             StatisticalPairsTrading, "batch_size", return_value=100
         ),  # Large batch size
@@ -521,9 +537,15 @@ async def test_batching_data_integrity_with_different_batch_sizes(batch_size):
     Test that different batch sizes produce identical results.
     This test is parameterized to run with multiple batch sizes.
     """
-    with patch(
-        "src.attributes.asset_group_attributes.StatisticalPairsTrading.windows",
-        new_callable=lambda: [dt.timedelta(hours=1)],
+    with (
+        patch(
+            "src.attributes.asset_group_attributes.StatisticalPairsTrading.windows",
+            new_callable=lambda: [dt.timedelta(hours=1)],
+        ),
+        patch(
+            "src.attributes.asset_group_attributes.StatisticalPairsTrading.step",
+            dt.timedelta(hours=1),
+        ),
     ):
         # Get the engine.
         engine = await get_engine()
@@ -653,6 +675,10 @@ async def test_batching_with_empty_groups():
         patch(
             "src.attributes.asset_group_attributes.StatisticalPairsTrading.windows",
             new_callable=lambda: [dt.timedelta(hours=1)],
+        ),
+        patch(
+            "src.attributes.asset_group_attributes.StatisticalPairsTrading.step",
+            dt.timedelta(hours=1),
         ),
         patch.object(StatisticalPairsTrading, "batch_size", return_value=2),
     ):
