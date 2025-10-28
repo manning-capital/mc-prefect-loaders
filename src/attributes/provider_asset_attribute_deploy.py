@@ -40,10 +40,10 @@ if __name__ == "__main__":
             limit=1, collision_strategy=ConcurrencyLimitStrategy.CANCEL_NEW
         ),
         schedule=Interval(
-            dt.timedelta(hours=1), anchor_date=dt.datetime(2000, 1, 1, 0, 0, 0)
+            dt.timedelta(days=1), anchor_date=dt.datetime(2000, 1, 1, 1, 0, 0)
         ),
         parameters={
-            "default_lookback_hours": 2,
+            "default_lookback_hours": 12,
         },
         build=False,
         push=False,

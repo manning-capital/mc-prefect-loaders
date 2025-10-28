@@ -59,7 +59,7 @@ class StatisticalPairsTrading(AbstractAssetGroupType):
 
     @property
     def step(self) -> dt.timedelta:
-        return dt.timedelta(hours=1)
+        return dt.timedelta(days=1)
 
     @property
     def resolution(self) -> dt.timedelta:
