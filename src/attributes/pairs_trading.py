@@ -1,6 +1,7 @@
 import datetime as dt
 from typing import Optional
 
+import dask
 from prefect_dask import get_dask_client
 import pandas as pd
 import dask.dataframe as dd
@@ -15,7 +16,6 @@ from prefect_dask.task_runners import DaskTaskRunner
 from coiled import Cluster
 from dask.distributed import LocalCluster, Client
 from prefect.blocks.system import Secret
-import subprocess
 
 
 from mc_postgres_db.prefect.asyncio.tasks import get_engine
@@ -30,26 +30,6 @@ DASK_WORKER_CPU = 2
 MAX_PROVIDER_ASSET_GROUPS = 5000
 
 @task()
-async def coiled_login():
-    """
-    Login to coiled.
-    """
-    # Run a command and handle errors
-    logger = get_run_logger()
-    coiled_api_key: str = (await Secret.load("coiled-api-key")).value()
-    try:
-        result = subprocess.run(
-            ['coiled', 'login', '--api-key', coiled_api_key],
-            capture_output=True,
-            text=True,
-            check=True
-        )
-        logger.info(result.stdout)
-    except subprocess.CalledProcessError as e:
-        logger.error(f"Command failed with return code {e.returncode}")
-        logger.error(e.stderr)
-
-@task()
 async def create_dask_cluster(use_local_cluster: bool = True) -> Cluster | LocalCluster:
     """
     Create the dask cluster.
@@ -60,7 +40,10 @@ async def create_dask_cluster(use_local_cluster: bool = True) -> Cluster | Local
         return LocalCluster(name=DASK_CLUSTER_NAME, n_workers=4, threads_per_worker=2)
     else:
         # Login to coiled.
-        await coiled_login()
+        coiled_api_key: str = (await Secret.load("coiled-api-key")).value()
+
+        # Set the coiled token.
+        dask.config.set({"coiled.token": coiled_api_key})
 
         # Create the coiled dask cluster.
         logger.info("Creating coiled dask cluster...")
