@@ -526,7 +526,6 @@ class TestPerformanceStress:
         self.mock_engine = create_mock_engine()
         self.pairs_trading = StatisticalPairsTrading(engine=self.mock_engine)
 
-    @pytest.mark.slow
     def test_large_dataset(self):
         """Test performance with large dataset (50k+ points)."""
         import time

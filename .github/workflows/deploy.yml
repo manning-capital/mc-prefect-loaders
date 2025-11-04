@@ -11,7 +11,7 @@ env:
   PREFECT_API_URL: http://prefect-server.prefect.svc.cluster.local:4200/api
   PREFECT_GITHUB_CREDENTIALS: ${{ secrets.PREFECT_GITHUB_CREDENTIALS }}
   POSTGRES_URL: ${{ secrets.POSTGRES_URL }}
-
+  COILED_API_KEY: ${{ secrets.COILED_API_KEY }}
 jobs:
   push:
     runs-on: ubuntu-latest
@@ -89,4 +89,5 @@ jobs:
             --set env.GITHUB_BRANCH=${{ env.GITHUB_BRANCH }} \
             --set env.GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }} \
             --set env.PREFECT_GITHUB_CREDENTIALS=${{ secrets.PREFECT_GITHUB_CREDENTIALS }} \
-            --set env.POSTGRES_URL=${{ secrets.POSTGRES_URL }}
+            --set env.POSTGRES_URL=${{ secrets.POSTGRES_URL }} \
+            --set env.COILED_API_KEY=${{ secrets.COILED_API_KEY }}

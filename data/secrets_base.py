@@ -8,3 +8,4 @@ if __name__ == "__main__":
         "github-credentials", overwrite=True
     )
     Secret(value=os.getenv("POSTGRES_URL")).save("postgres-url", overwrite=True)  # type: ignore
+    Secret(value=os.getenv("COILED_API_KEY")).save("coiled-api-key", overwrite=True)  # type: ignore
