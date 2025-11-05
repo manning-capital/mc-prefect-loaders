@@ -1,5 +1,6 @@
 import os
 import sys
+import datetime as dt
 
 import pandas as pd
 import pytest
@@ -62,9 +63,10 @@ async def test_pairs_trading():
         session.refresh(pairs_trading_asset_group_type)
 
     # Generate market data for USD pairs (BTC/USD and ETH/USD)
+    date: dt.date = dt.date(2025, 1, 1)
     df_usd = generate_market_data_dataframe(
         to_asset_ids=[btc_asset.id, eth_asset.id],
-        n_points=1000,
+        n_points=7 * 24 * 60,  # 7 days of data
         n_cointegrated_pairs=1,
         provider_id=kraken_provider.id,
         from_asset_id=usd_asset.id,
@@ -78,12 +80,13 @@ async def test_pairs_trading():
             "sigma": 2.0,
             "start_price": 100.0,
         },
+        start_time=dt.datetime.combine(date - dt.timedelta(days=7), dt.time.min),
     )
 
     # Generate market data for EUR pairs (BTC/EUR and ETH/EUR)
     df_eur = generate_market_data_dataframe(
         to_asset_ids=[btc_asset.id, eth_asset.id],
-        n_points=1000,
+        n_points=7 * 24 * 60,  # 7 days of data
         n_cointegrated_pairs=1,
         provider_id=kraken_provider.id,
         from_asset_id=eur_asset.id,
@@ -97,6 +100,7 @@ async def test_pairs_trading():
             "sigma": 2.0,
             "start_price": 100.0,
         },
+        start_time=dt.datetime.combine(date - dt.timedelta(days=7), dt.time.min),
     )
 
     # Create the provider asset groups.
@@ -155,6 +159,6 @@ async def test_pairs_trading():
 
     # Create the provider asset groups.
     await refresh_pairs_trading_attribute_data(
-        start=df["timestamp"].min(),
-        end=df["timestamp"].max(),
+        date=date,
+        lookback_window_days=7,
     )
