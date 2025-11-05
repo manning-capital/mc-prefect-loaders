@@ -1,5 +1,6 @@
 import datetime as dt
-from typing import Optional
+from typing import Optional, Generator
+from contextlib import contextmanager
 
 import dask
 import numpy as np
@@ -32,15 +33,18 @@ MAX_PROVIDER_ASSET_GROUPS = 5000
 COINTEGRATION_P_VALUE_THRESHOLD = 0.001
 
 
-@task()
-async def create_dask_cluster(use_local_cluster: bool = True) -> Cluster | LocalCluster:
+@contextmanager
+async def get_dask_client(
+    use_local_cluster: bool = True,
+) -> Generator[Client, None, None]:
     """
-    Create the dask cluster.
+    Get the dask client.
     """
-    logger = get_run_logger()
+    cluster: Cluster | LocalCluster = None
     if use_local_cluster:
-        logger.info("Creating local dask cluster...")
-        return LocalCluster(name=DASK_CLUSTER_NAME, n_workers=4, threads_per_worker=2)
+        cluster = LocalCluster(
+            name=DASK_CLUSTER_NAME, n_workers=4, threads_per_worker=2
+        )
     else:
         # Login to coiled.
         coiled_api_key: str = (await Secret.load("coiled-api-key")).value()
@@ -50,8 +54,7 @@ async def create_dask_cluster(use_local_cluster: bool = True) -> Cluster | Local
         dask.config.set({"coiled.token": coiled_api_key})
 
         # Create the coiled dask cluster.
-        logger.info("Creating coiled dask cluster...")
-        return Cluster(
+        cluster = Cluster(
             name=DASK_CLUSTER_NAME,
             n_workers=DASK_N_WORKERS,
             region=DASK_REGION,
@@ -61,16 +64,15 @@ async def create_dask_cluster(use_local_cluster: bool = True) -> Cluster | Local
             spot_policy="spot_with_fallback",
         )
 
+    # Create the dask client.
+    client = Client(cluster)
 
-@task()
-async def shutdown_dask_cluster(cluster: Cluster | LocalCluster):
-    """
-    Shutdown/close the dask cluster.
-    """
-    if isinstance(cluster, LocalCluster):
-        cluster.close()
-    else:
-        cluster.shutdown()
+    # Yield the dask client.
+    yield client
+
+    # Close the dask client and cluster.
+    client.close()
+    cluster.close()
 
 
 @task()
@@ -269,6 +271,9 @@ async def get_pairs_trading_frame(
     # Convert to Dask DataFrame
     pairs_trading_frame = dd.from_delayed(delayed_dfs, meta=meta)
 
+    # Re-partition the Dask DataFrame to ensure the index is sorted.
+    pairs_trading_frame = pairs_trading_frame.repartition(partition_size="10MB")
+
     return pairs_trading_frame
 
 
@@ -370,11 +375,7 @@ async def refresh_pairs_trading_attribute_data(
 
     # Create the dask cluster.
     logger.info("Creating the dask cluster...")
-    cluster: Cluster | LocalCluster = await create_dask_cluster(use_local_cluster=True)
-    try:
-        # Get the dask client.
-        client: Client = cluster.get_client()
-
+    with get_dask_client(use_local_cluster=True) as client:
         # Log the address of the dask cluster.
         logger.info(f"Dask cluster address: {client.dashboard_link}")
 
@@ -421,10 +422,21 @@ async def refresh_pairs_trading_attribute_data(
             f"Found {len(cointegrated_provider_asset_group_ids)} cointegrated provider asset group ids."
         )
 
+        # Scatter the market data to the dask cluster.
+        logger.info("Scattering the provider asset market data to the dask cluster...")
+        provider_asset_market_data_future = client.scatter(
+            provider_asset_market_data, broadcast=True
+        )
+
         # Get the cointegrated provider asset group member data.
-        cointegrated_pairs_trading_frame = pairs_trading_frame.loc[
-            pairs_trading_frame.index.isin(cointegrated_provider_asset_group_ids)
-        ]
+        cointegrated_pairs_trading_frame = await get_pairs_trading_frame(
+            start_naive,
+            end_naive,
+            cointegrated_provider_asset_group_ids,
+            provider_asset_group_member_data,
+            provider_asset_market_data_future,
+            client,
+        )
 
         # Compute the statistical attributes for the cointegrated pairs trading frame.
         cointegrated_pairs_trading_stats = cointegrated_pairs_trading_frame.groupby(
@@ -475,8 +487,3 @@ async def refresh_pairs_trading_attribute_data(
 
         # Set the data to the database.
         await set_data(models.ProviderAssetGroupAttribute.__tablename__, toset)
-
-    finally:
-        # Shutdown the dask cluster.
-        logger.info("Shutting down the dask cluster...")
-        await shutdown_dask_cluster(cluster=cluster)
