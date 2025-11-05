@@ -10,6 +10,7 @@ import mc_postgres_db.models as models
 from dask import delayed
 from coiled import Cluster
 from prefect import flow, task, get_run_logger
+from prefect.variables import Variable
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from dask.distributed import Client, LocalCluster
@@ -22,7 +23,7 @@ from src.attributes.stochastic_models import OrnsteinUhlenbeck
 DASK_CLUSTER_NAME = "prefect-cluster"
 DASK_N_WORKERS = 40
 DASK_REGION = "us-east-1"
-DASK_CONTAINER = "ghcr.io/manning-capital/mc-prefect-loaders:main"
+DASK_CONTAINER = "ghcr.io/manning-capital/mc-prefect-loaders"
 DASK_WORKER_MEMORY = "16GB"
 DASK_WORKER_CPU = 2
 
@@ -43,7 +44,8 @@ async def create_dask_cluster(use_local_cluster: bool = True) -> Cluster | Local
     else:
         # Login to coiled.
         coiled_api_key: str = (await Secret.load("coiled-api-key")).value()
-
+        github_branch: str = await Variable.get("github-branch")
+        
         # Set the coiled token.
         dask.config.set({"coiled.token": coiled_api_key})
 
@@ -53,7 +55,7 @@ async def create_dask_cluster(use_local_cluster: bool = True) -> Cluster | Local
             name=DASK_CLUSTER_NAME,
             n_workers=DASK_N_WORKERS,
             region=DASK_REGION,
-            container=DASK_CONTAINER,
+            container=f"{DASK_CONTAINER}:{github_branch}",
             worker_memory=DASK_WORKER_MEMORY,
             worker_cpu=DASK_WORKER_CPU,
             spot_policy="spot_with_fallback",
