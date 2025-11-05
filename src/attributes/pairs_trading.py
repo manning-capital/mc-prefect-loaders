@@ -1,6 +1,6 @@
 import datetime as dt
-from typing import Optional, Generator
-from contextlib import contextmanager
+from typing import Optional, AsyncGenerator
+from contextlib import asynccontextmanager
 
 import dask
 import numpy as np
@@ -33,10 +33,10 @@ MAX_PROVIDER_ASSET_GROUPS = 5000
 COINTEGRATION_P_VALUE_THRESHOLD = 0.001
 
 
-@contextmanager
+@asynccontextmanager
 async def get_dask_client(
     use_local_cluster: bool = True,
-) -> Generator[Client, None, None]:
+) -> AsyncGenerator[Client, None]:
     """
     Get the dask client.
     """
@@ -66,13 +66,16 @@ async def get_dask_client(
 
     # Create the dask client.
     client = Client(cluster)
-
-    # Yield the dask client.
-    yield client
-
-    # Close the dask client and cluster.
-    client.close()
-    cluster.close()
+    try:
+        # Yield the dask client.
+        yield client
+    finally:
+        # Close the dask client and cluster.
+        client.close()
+        if isinstance(cluster, LocalCluster):
+            cluster.close()
+        else:
+            cluster.close(force_shutdown=True)
 
 
 @task()
@@ -271,8 +274,11 @@ async def get_pairs_trading_frame(
     # Convert to Dask DataFrame
     pairs_trading_frame = dd.from_delayed(delayed_dfs, meta=meta)
 
-    # Re-partition the Dask DataFrame to ensure the index is sorted.
-    pairs_trading_frame = pairs_trading_frame.repartition(partition_size="10MB")
+    # Reset the index and sort it.
+    pairs_trading_frame = pairs_trading_frame.reset_index()
+    pairs_trading_frame = pairs_trading_frame.set_index(
+        "provider_asset_group_id", sorted=True
+    )
 
     return pairs_trading_frame
 
@@ -375,7 +381,7 @@ async def refresh_pairs_trading_attribute_data(
 
     # Create the dask cluster.
     logger.info("Creating the dask cluster...")
-    with get_dask_client(use_local_cluster=True) as client:
+    async with get_dask_client(use_local_cluster=True) as client:
         # Log the address of the dask cluster.
         logger.info(f"Dask cluster address: {client.dashboard_link}")
 
@@ -395,7 +401,6 @@ async def refresh_pairs_trading_attribute_data(
             provider_asset_market_data=provider_asset_market_data_future,
             client=client,
         )
-        pairs_trading_frame = pairs_trading_frame.persist()
 
         # Compute the pairs trading frame.
         cointegration_p_values: dd.DataFrame = pairs_trading_frame.groupby(

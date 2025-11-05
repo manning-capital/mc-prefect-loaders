@@ -5,6 +5,7 @@ import datetime as dt
 import pandas as pd
 import pytest
 import mc_postgres_db.models as models
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 sys.path.append(os.path.join(os.path.dirname(__file__), os.pardir))
@@ -27,6 +28,9 @@ async def test_pairs_trading():
 
     # Get the engine.
     engine = await get_engine()
+
+    # Set the lookback window days.
+    lookback_window_days = 30
 
     # Create the provider and asset data.
     _, kraken_provider = await sample_provider_data(engine)
@@ -66,7 +70,7 @@ async def test_pairs_trading():
     date: dt.date = dt.date(2025, 1, 1)
     df_usd = generate_market_data_dataframe(
         to_asset_ids=[btc_asset.id, eth_asset.id],
-        n_points=7 * 24 * 60,  # 7 days of data
+        n_points=lookback_window_days * 24 * 60,  # lookback window days of data
         n_cointegrated_pairs=1,
         provider_id=kraken_provider.id,
         from_asset_id=usd_asset.id,
@@ -80,13 +84,15 @@ async def test_pairs_trading():
             "sigma": 2.0,
             "start_price": 100.0,
         },
-        start_time=dt.datetime.combine(date - dt.timedelta(days=7), dt.time.min),
+        start_time=dt.datetime.combine(
+            date - dt.timedelta(days=lookback_window_days), dt.time.min
+        ),
     )
 
     # Generate market data for EUR pairs (BTC/EUR and ETH/EUR)
     df_eur = generate_market_data_dataframe(
         to_asset_ids=[btc_asset.id, eth_asset.id],
-        n_points=7 * 24 * 60,  # 7 days of data
+        n_points=lookback_window_days * 24 * 60,  # lookback window days of data
         n_cointegrated_pairs=1,
         provider_id=kraken_provider.id,
         from_asset_id=eur_asset.id,
@@ -100,7 +106,9 @@ async def test_pairs_trading():
             "sigma": 2.0,
             "start_price": 100.0,
         },
-        start_time=dt.datetime.combine(date - dt.timedelta(days=7), dt.time.min),
+        start_time=dt.datetime.combine(
+            date - dt.timedelta(days=lookback_window_days), dt.time.min
+        ),
     )
 
     # Create the provider asset groups.
@@ -160,5 +168,14 @@ async def test_pairs_trading():
     # Create the provider asset groups.
     await refresh_pairs_trading_attribute_data(
         date=date,
-        lookback_window_days=7,
+        lookback_window_days=lookback_window_days,
     )
+
+    # Get the pairs trading attribute data.
+    pairs_trading_attribute_data = pd.read_sql(
+        select(models.ProviderAssetGroupAttribute),
+        con=engine,
+    )
+
+    # Check the pairs trading attribute data.
+    assert len(pairs_trading_attribute_data) == 2
