@@ -10,10 +10,10 @@ import mc_postgres_db.models as models
 from dask import delayed
 from coiled import Cluster
 from prefect import flow, task, get_run_logger
-from prefect.variables import Variable
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from dask.distributed import Client, LocalCluster
+from prefect.variables import Variable
 from prefect.blocks.system import Secret
 from statsmodels.tsa.stattools import coint
 from mc_postgres_db.prefect.asyncio.tasks import set_data, get_engine
@@ -45,7 +45,7 @@ async def create_dask_cluster(use_local_cluster: bool = True) -> Cluster | Local
         # Login to coiled.
         coiled_api_key: str = (await Secret.load("coiled-api-key")).value()
         github_branch: str = await Variable.get("github-branch")
-        
+
         # Set the coiled token.
         dask.config.set({"coiled.token": coiled_api_key})
 
@@ -269,11 +269,6 @@ async def get_pairs_trading_frame(
     # Convert to Dask DataFrame
     pairs_trading_frame = dd.from_delayed(delayed_dfs, meta=meta)
 
-    # Set index to provider_asset_group_id
-    pairs_trading_frame = pairs_trading_frame.set_index(
-        "provider_asset_group_id", sorted=True
-    )
-
     return pairs_trading_frame
 
 
@@ -289,7 +284,7 @@ def get_cointegrated_stats(df: pd.DataFrame) -> pd.Series:
     model = sm.OLS(y, X)
     results = model.fit()
 
-    # Get the residuals.
+    # Get the linear regression stats.
     linear_fit_alpha = results.params[0]
     linear_fit_beta = results.params[1]
     linear_fit_mse = results.mse_total
@@ -297,7 +292,7 @@ def get_cointegrated_stats(df: pd.DataFrame) -> pd.Series:
     linear_fit_r_squared_adj = results.rsquared_adj
     residuals = results.resid
 
-    # Get the cointegration stats.
+    # Fit the residuals to the Ornstein-Uhlenbeck process.
     ou_params = OrnsteinUhlenbeck().fit(residuals)
 
     return pd.Series(
