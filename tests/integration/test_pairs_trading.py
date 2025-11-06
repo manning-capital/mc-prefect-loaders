@@ -77,8 +77,8 @@ async def test_pairs_trading():
         cointegrated_params={
             "alpha": 10.0,
             "beta": 1.5,
-            "drift": 0.05,
-            "volatility": 0.2,
+            "drift": 0.00005,
+            "volatility": 0.0002,
             "theta": 0.5,
             "mu": 0.1,
             "sigma": 2.0,
@@ -99,8 +99,8 @@ async def test_pairs_trading():
         cointegrated_params={
             "alpha": 10.0,
             "beta": 1.5,
-            "drift": 0.05,
-            "volatility": 0.2,
+            "drift": 0.00005,
+            "volatility": 0.0002,
             "theta": 0.5,
             "mu": 0.1,
             "sigma": 2.0,

@@ -11,6 +11,7 @@ import mc_postgres_db.models as models
 from dask import delayed
 from coiled import Cluster
 from prefect import flow, task, get_run_logger
+from prefect.runtime import deployment
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from dask.distributed import Client, LocalCluster
@@ -34,13 +35,23 @@ COINTEGRATION_P_VALUE_THRESHOLD = 0.001
 
 
 @asynccontextmanager
-async def get_dask_client(
-    use_local_cluster: bool = True,
-) -> AsyncGenerator[Client, None]:
+async def get_dask_client() -> AsyncGenerator[Client, None]:
     """
     Get the dask client.
+    
+    Automatically detects the execution environment:
+    - If running locally (no deployment), uses LocalCluster
+    - If running as a deployed flow, uses Coiled cluster
+    
+    Yields:
+        Dask Client connected to the appropriate cluster
     """
     cluster: Cluster | LocalCluster = None
+    
+    # Auto-detect environment based on Prefect runtime context
+    # If deployment.name is None, we're running locally (including tests)
+    use_local_cluster = deployment.name is None
+    
     if use_local_cluster:
         cluster = LocalCluster(
             name=DASK_CLUSTER_NAME, n_workers=4, threads_per_worker=2
@@ -381,7 +392,7 @@ async def refresh_pairs_trading_attribute_data(
 
     # Create the dask cluster.
     logger.info("Creating the dask cluster...")
-    async with get_dask_client(use_local_cluster=True) as client:
+    async with get_dask_client() as client:
         # Log the address of the dask cluster.
         logger.info(f"Dask cluster address: {client.dashboard_link}")
 
