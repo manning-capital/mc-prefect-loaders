@@ -65,7 +65,9 @@ class KrakenProviderAssetMarketData(AbstractProviderAssetMarketData):
         response_data = await self.request_asset_pairs()
         result: dict[str, dict[str, Any]] = response_data["result"]
 
-        # Format the raw asset pairs result into a pandas dataframe.
+        # Skip Kraken suffix variants like XBTUSD:BTNL — leveraged products
+        # that share OHLC with the underlying spot pair and would collide on
+        # (timestamp, from_asset_id, to_asset_id) at upsert time.
         asset_pairs = pd.DataFrame(
             [
                 {
@@ -74,6 +76,7 @@ class KrakenProviderAssetMarketData(AbstractProviderAssetMarketData):
                     "to_asset_code": asset_data["base"],
                 }
                 for asset_pair, asset_data in result.items()
+                if ":" not in asset_pair
             ]
         )
 

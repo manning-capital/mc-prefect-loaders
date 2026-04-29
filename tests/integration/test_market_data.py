@@ -793,16 +793,15 @@ async def test_market_data_batching_with_empty_data(
 
 
 @pytest.mark.asyncio
-async def test_pull_kraken_data_with_aliased_pairs_resolving_to_same_pk(
+async def test_pull_kraken_data_skips_btnl_leveraged_pairs(
     fake_data: FakeData,
 ):
     """
-    Reproduces the upsert failure that happens when two Kraken pair codes
-    (e.g. XXBTZUSD and XBTUSD:BTNL) resolve to the same
-    (timestamp, provider_id, from_asset_id, to_asset_id) primary key via
-    provider_asset_map. Without the dedupe step, both rows land in the same
-    INSERT ... ON CONFLICT DO UPDATE statement and Postgres raises
-    "ON CONFLICT DO UPDATE command cannot affect row a second time".
+    Kraken returns leveraged variants like XBTUSD:BTNL alongside the spot
+    pair XXBTZUSD. Both resolve to the same (from_asset_id, to_asset_id) and
+    return OHLC at the same timestamp, which would collide on the
+    provider_asset_market PK. We should filter ":" suffixed pairs at the
+    source so only the spot pair's data lands in the database.
     """
     # Get the engine.
     engine = await get_engine()
@@ -863,10 +862,13 @@ async def test_pull_kraken_data_with_aliased_pairs_resolving_to_same_pk(
         ],
     }
 
-    # With the dedupe fix in place this should complete without raising.
+    # With the BTNL filter in place this should complete without raising.
     await pull_provider_asset_market_data()
 
-    # Exactly one (USD, BTC) row should exist for this timestamp.
+    # Exactly one (USD, BTC) row should exist, and it should be the spot price
+    # (100.0) — not the leveraged BTNL price (200.0). If the BTNL pair were
+    # processed, it would either crash the upsert or (after dedupe with
+    # keep="last") win the row at 200.0.
     with Session(engine) as session:
         rows = (
             session.execute(
@@ -879,7 +881,11 @@ async def test_pull_kraken_data_with_aliased_pairs_resolving_to_same_pk(
             .all()
         )
         assert len(rows) == 1, (
-            f"Expected exactly 1 deduped row for (USD, BTC), got {len(rows)}"
+            f"Expected exactly 1 row for (USD, BTC), got {len(rows)}"
+        )
+        assert rows[0].close == 100.0, (
+            f"Expected spot price 100.0 to win, got {rows[0].close} "
+            "(BTNL leveraged pair leaked through)"
         )
 
 
