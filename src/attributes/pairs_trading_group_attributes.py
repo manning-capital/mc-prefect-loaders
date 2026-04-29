@@ -11,9 +11,9 @@ import mc_postgres_db.models as models
 from dask import delayed
 from coiled import Cluster
 from prefect import flow, task, get_run_logger
-from prefect.runtime import deployment
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from prefect.runtime import deployment
 from dask.distributed import Client, LocalCluster
 from prefect.variables import Variable
 from prefect.blocks.system import Secret
@@ -34,59 +34,6 @@ MAX_PROVIDER_ASSET_GROUPS = 5000
 COINTEGRATION_P_VALUE_THRESHOLD = 0.001
 
 
-@asynccontextmanager
-async def get_dask_client() -> AsyncGenerator[Client, None]:
-    """
-    Get the dask client.
-    
-    Automatically detects the execution environment:
-    - If running locally (no deployment), uses LocalCluster
-    - If running as a deployed flow, uses Coiled cluster
-    
-    Yields:
-        Dask Client connected to the appropriate cluster
-    """
-    cluster: Cluster | LocalCluster = None
-    
-    # Auto-detect environment based on Prefect runtime context
-    # If deployment.name is None, we're running locally (including tests)
-    use_local_cluster = deployment.name is None
-    
-    if use_local_cluster:
-        cluster = LocalCluster(
-            name=DASK_CLUSTER_NAME, n_workers=4, threads_per_worker=2
-        )
-    else:
-        # Login to coiled.
-        coiled_api_key: str = (await Secret.load("coiled-api-key")).value()
-        github_branch: str = await Variable.get("github-branch")
-
-        # Set the coiled token.
-        dask.config.set({"coiled.token": coiled_api_key})
-
-        # Create the coiled dask cluster.
-        cluster = Cluster(
-            name=DASK_CLUSTER_NAME,
-            n_workers=DASK_N_WORKERS,
-            region=DASK_REGION,
-            container=f"{DASK_CONTAINER}:{github_branch}",
-            worker_memory=DASK_WORKER_MEMORY,
-            worker_cpu=DASK_WORKER_CPU,
-            spot_policy="spot_with_fallback",
-        )
-
-    # Create the dask client.
-    client = Client(cluster)
-    try:
-        # Yield the dask client.
-        yield client
-    finally:
-        # Close the dask client and cluster.
-        client.close()
-        if isinstance(cluster, LocalCluster):
-            cluster.close()
-        else:
-            cluster.close(force_shutdown=True)
 
 
 @task()

@@ -67,73 +67,18 @@ async def refresh_by_asset_group_type(
     )
     provider_asset_group_ids = asset_group_type.get_current_provider_asset_group_ids()
     provider_asset_group_id_list = list(provider_asset_group_ids)
-    batch_size = asset_group_type.batch_size
-
-    # Calculate the attributes for the provider asset market data dataframes.
-    for window in asset_group_type.windows:
-        window_duration = humanize.naturaldelta(window)
-
-        logger.info(
-            f"Processing {len(provider_asset_group_id_list)} groups in batches of {batch_size} for {window_duration} window..."
-        )
-
-        # Process in batches
-        for i in range(0, len(provider_asset_group_id_list), batch_size):
-            batch_ids = set(provider_asset_group_id_list[i : i + batch_size])
-            batch_num = (i // batch_size) + 1
-            total_batches = (
-                len(provider_asset_group_id_list) + batch_size - 1
-            ) // batch_size
-
-            logger.info(
-                f"Processing batch {batch_num}/{total_batches} ({len(batch_ids)} groups) for {window_duration} window..."
-            )
-
-            # Get the provider asset group market data for the batch.
-            provider_asset_group_members_df: pl.DataFrame = (
-                asset_group_type.get_provider_asset_group_market_data(
-                    provider_asset_group_ids=batch_ids,
-                    start=start - window,
-                    end=end,
-                )
-            )
-
-            # Calculate the attributes for the provider asset group market data dataframes.
-            futures = []
-            logger.info(
-                f"Calculating attributes for batch {batch_num}/{total_batches} with {window_duration} window..."
-            )
-            for ids, data in provider_asset_group_members_df.group_by(
-                [
-                    "provider_asset_group_id",
-                ]
-            ):
-                # Get the provider asset group id.
-                provider_asset_group_id = ids[0]
-
-                # Calculate the attributes for the provider asset group market data dataframe.
-                result = calculate_attributes(
-                    asset_group_type, provider_asset_group_id, window, data
-                )
-                futures.append(result)
-
-            # Calculate the attributes for the provider asset group market data dataframes.
-            results = await asyncio.gather(*futures)
-
-            # Set the data if there are any results.
-            if len(results) > 0:
-                results_df = pl.concat(results)
-                await set_data(
-                    models.ProviderAssetGroupAttribute.__tablename__,
-                    results_df.to_pandas(),
-                )
+    
+    # Save the attributes.
+    logger.info(
+        f"Saving the attributes for {asset_group_type.asset_group_type.name}..."
+    )
+    asset_group_type.save_attributes(provider_asset_group_ids=provider_asset_group_ids)
 
 
 @flow()
 async def refresh_provider_asset_attribute_data(
-    start: Optional[dt.datetime] = None,
-    end: Optional[dt.datetime] = None,
-    default_lookback_hours: int = 24,
+    date: Optional[dt.date] = None,
+    lookback_window_days: Optional[int] = None,
 ):
     """
     Refresh the provider asset attribute data.

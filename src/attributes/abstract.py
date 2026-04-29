@@ -1,11 +1,22 @@
 import datetime as dt
 from abc import ABC, abstractmethod
+from typing import AsyncGenerator
+from logging import Logger
+from contextlib import asynccontextmanager
 
+import dask
+import pandas as pd
 import polars as pl
+import dask.config
 import mc_postgres_db.models as models
+from coiled import Cluster
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
+from prefect.runtime import deployment
+from dask.distributed import Client, LocalCluster
 from sqlalchemy.engine import Engine
+from prefect.client.schemas.objects import Deployment
+from prefect import get_client
 
 
 def align_timestamp_to_resolution(
@@ -77,8 +88,112 @@ class AbstractAssetGroupType(ABC):
     Abstract class for asset group type.
     """
 
-    def __init__(self, engine: Engine):
+    def __init__(
+        self, engine: Engine, client: Client, logger: Logger, coiled_api_key: str
+    ):
         self.engine = engine
+        self.client = client
+        self.logger = logger
+        self.coiled_api_key = coiled_api_key
+
+    @property
+    def dask_cluster_name(self) -> str:
+        """
+        Get the dask cluster name.
+        """
+        return f"mc-prefect-cluster-{self.asset_group_type.name}"
+
+    @asynccontextmanager
+    async def get_dask_cluster(self) -> AsyncGenerator[Cluster | LocalCluster, None]:
+        """
+        Get the dask cluster.
+
+        Automatically detects the execution environment:
+        - If running locally (no deployment), uses LocalCluster
+        - If running as a deployed flow, uses Coiled cluster
+
+        Yields:
+            Dask Client connected to the appropriate cluster
+        """
+        cluster: Cluster | LocalCluster = None
+
+        # Auto-detect environment based on Prefect runtime context
+        # If deployment.name is None, we're running locally (including tests)
+        use_local_cluster = deployment.name is None
+
+        if use_local_cluster:
+            cluster = LocalCluster(
+                name=self.dask_cluster_name, n_workers=4, threads_per_worker=2
+            )
+        else:
+            # From the Prefect deployment, we can get the image and tag.
+            deployment_id = deployment.get_id()
+
+            # Get the image from the deployment.
+            async with get_client() as client:
+                deployment = await client.read_deployment(deployment_id)
+                image: str | None = deployment.job_variables.get("image")
+                if image is None:
+                    raise ValueError(f"Image is not set for deployment {deployment_id} so we cannot create the dask cluster.")
+
+            # Set the coiled token.
+            dask.config.set({"coiled.token": self.coiled_api_key})
+
+            # Create the coiled dask cluster.
+            cluster = Cluster(
+                name=self.dask_cluster_name,
+                n_workers=self.dask_n_workers,
+                region=self.dask_region,
+                container=image,
+                worker_memory=self.dask_worker_memory,
+                worker_cpu=self.dask_worker_cpu,
+                spot_policy="spot_with_fallback",
+            )
+
+        # Create the dask client.
+        client = Client(cluster)
+        try:
+            # Yield the dask client.
+            yield client
+        finally:
+            # Close the dask client and cluster.
+            client.close()
+            if isinstance(cluster, LocalCluster):
+                cluster.close()
+            else:
+                cluster.close(force_shutdown=True)
+
+    @property
+    @abstractmethod
+    def dask_n_workers(self) -> int:
+        """
+        Get the dask n workers.
+        """
+        pass
+
+    @property
+    @abstractmethod
+    def dask_region(self) -> str:
+        """
+        Get the dask region.
+        """
+        pass
+
+    @property
+    @abstractmethod
+    def dask_worker_memory(self) -> str:
+        """
+        Get the dask worker memory.
+        """
+        pass
+
+    @property
+    @abstractmethod
+    def dask_worker_cpu(self) -> int:
+        """
+        Get the dask worker cpu.
+        """
+        pass
 
     @property
     @abstractmethod
@@ -164,17 +279,16 @@ class AbstractAssetGroupType(ABC):
         return [provider.id for provider in self.providers]
 
     @abstractmethod
-    def calculate_group_attributes(
-        self, window: int, step: int, group_market_df: pl.DataFrame
-    ) -> pl.DataFrame:
+    async def save_attributes(
+        self, provider_asset_group_ids: set[int], start: dt.datetime, end: dt.datetime
+    ) -> None:
         """
-        Calculate the attributes for the provider asset group data dataframes.
+        Save the attributes for the provider asset groups with the Dask client to the ProviderAssetGroupAttribute table.
+
         Args:
-            window: The window size for the rolling window.
-            step: The step size for the rolling window.
-            group_market_df: The dataframe with the provider asset market data for the group.
-        Returns:
-            The dataframe with the attributes calculated for each provider asset group data dataframe.
+            provider_asset_group_ids: The provider asset group ids.
+            start: The start datetime.
+            end: The end datetime.
         """
         pass
 
@@ -199,11 +313,19 @@ class AbstractAssetGroupType(ABC):
 
     def get_current_provider_asset_groups(
         self,
+        is_active: bool | None = None,
     ) -> set[models.ProviderAssetGroup]:
         """
         Get the current provider asset groups based on the provider asset groups in the database,
         filtered by the exact number of members, at the query level.
         """
+        # Get the filter condition.
+        if is_active is not None:
+            filter_condition = models.ProviderAssetGroup.is_active.is_(is_active)
+        else:
+            filter_condition = None
+
+        # Get the current provider asset groups.
         with Session(self.engine) as session:
             # Subquery to count members per group.
             subq = (
@@ -232,6 +354,7 @@ class AbstractAssetGroupType(ABC):
                 .filter(
                     models.ProviderAssetGroup.asset_group_type_id
                     == self.asset_group_type.id,
+                    filter_condition,
                     subq.c.member_count == self.group_size,
                 )
                 .options(joinedload(models.ProviderAssetGroup.members))
@@ -510,3 +633,56 @@ class AbstractAssetGroupType(ABC):
                     )
                 )
             session.commit()
+
+    def get_provider_asset_group_member_data(
+        self,
+        provider_asset_group_ids: list[int],
+    ) -> pd.DataFrame:
+        """
+        Get the provider asset group member data.
+        """
+        return pd.read_sql(
+            select(
+                models.ProviderAssetGroupMember.provider_asset_group_id,
+                models.ProviderAssetGroupMember.order,
+                models.ProviderAssetGroupMember.provider_id,
+                models.ProviderAssetGroupMember.from_asset_id,
+                models.ProviderAssetGroupMember.to_asset_id,
+            )
+            .where(
+                models.ProviderAssetGroupMember.provider_asset_group_id.in_(
+                    provider_asset_group_ids
+                )
+            )
+            .distinct(),
+            self.engine,
+        )
+
+    def get_provider_asset_market_data(
+        self,
+        start: dt.datetime,
+        end: dt.datetime,
+        provider_ids: list[int],
+        from_asset_ids: list[int],
+        to_asset_ids: list[int],
+    ) -> pd.DataFrame:
+        """
+        Get the provider asset market data.
+        """
+        return pd.read_sql(
+            select(
+                models.ProviderAssetMarket.timestamp,
+                models.ProviderAssetMarket.provider_id,
+                models.ProviderAssetMarket.from_asset_id,
+                models.ProviderAssetMarket.to_asset_id,
+                models.ProviderAssetMarket.close,
+            )
+            .where(
+                models.ProviderAssetMarket.timestamp.between(start, end),
+                models.ProviderAssetMarket.provider_id.in_(provider_ids),
+                models.ProviderAssetMarket.from_asset_id.in_(from_asset_ids),
+                models.ProviderAssetMarket.to_asset_id.in_(to_asset_ids),
+            )
+            .order_by(models.ProviderAssetMarket.timestamp),
+            self.engine,
+        )
