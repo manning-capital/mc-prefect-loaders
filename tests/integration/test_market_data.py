@@ -793,6 +793,97 @@ async def test_market_data_batching_with_empty_data(
 
 
 @pytest.mark.asyncio
+async def test_pull_kraken_data_with_aliased_pairs_resolving_to_same_pk(
+    fake_data: FakeData,
+):
+    """
+    Reproduces the upsert failure that happens when two Kraken pair codes
+    (e.g. XXBTZUSD and XBTUSD:BTNL) resolve to the same
+    (timestamp, provider_id, from_asset_id, to_asset_id) primary key via
+    provider_asset_map. Without the dedupe step, both rows land in the same
+    INSERT ... ON CONFLICT DO UPDATE statement and Postgres raises
+    "ON CONFLICT DO UPDATE command cannot affect row a second time".
+    """
+    # Get the engine.
+    engine = await get_engine()
+
+    # Create the base data (gives us XXBT/ZUSD provider asset codes).
+    (
+        _,
+        _,
+        _,
+        kraken_provider_id,
+        btc_asset_id,
+        _,
+        usd_asset_id,
+        _,
+    ) = create_base_data(engine)
+
+    # Register XBT and USD as additional Kraken codes for BTC/USD so the
+    # leveraged pair (XBTUSD:BTNL) resolves to the same asset ids as XXBTZUSD.
+    # Use a different date than create_base_data so the provider_asset PK
+    # (date, provider_id, asset_id) doesn't collide.
+    two_days_ago = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=2)).date()
+    with Session(engine) as session:
+        session.add(
+            ProviderAsset(
+                date=two_days_ago,
+                provider_id=kraken_provider_id,
+                asset_id=btc_asset_id,
+                asset_code="XBT",
+                is_active=True,
+            )
+        )
+        session.add(
+            ProviderAsset(
+                date=two_days_ago,
+                provider_id=kraken_provider_id,
+                asset_id=usd_asset_id,
+                asset_code="USD",
+                is_active=True,
+            )
+        )
+        session.commit()
+
+    # Reset the fake data.
+    fake_data.reset_data()
+
+    # Two pair codes resolving to the same (from=USD, to=BTC) at the same timestamp.
+    use_time = dt.datetime.now(dt.timezone.utc).replace(microsecond=0)
+    fake_data.asset_pairs = {
+        "XXBTZUSD": {"base": "XXBT", "quote": "ZUSD"},
+        "XBTUSD:BTNL": {"base": "XBT", "quote": "USD"},
+    }
+    fake_data.market_data = {
+        "XXBTZUSD": [
+            [int(use_time.timestamp()), 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0],
+        ],
+        "XBTUSD:BTNL": [
+            [int(use_time.timestamp()), 200.0, 200.0, 200.0, 200.0, 200.0, 200.0, 200.0],
+        ],
+    }
+
+    # With the dedupe fix in place this should complete without raising.
+    await pull_provider_asset_market_data()
+
+    # Exactly one (USD, BTC) row should exist for this timestamp.
+    with Session(engine) as session:
+        rows = (
+            session.execute(
+                select(ProviderAssetMarket).where(
+                    ProviderAssetMarket.from_asset_id == usd_asset_id,
+                    ProviderAssetMarket.to_asset_id == btc_asset_id,
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len(rows) == 1, (
+            f"Expected exactly 1 deduped row for (USD, BTC), got {len(rows)}"
+        )
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("batch_size", [50])
 async def test_market_data_batching_with_large_dataset(
     fake_data: FakeData, batch_size: int
