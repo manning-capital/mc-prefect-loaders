@@ -65,9 +65,12 @@ class KrakenProviderAssetMarketData(AbstractProviderAssetMarketData):
         response_data = await self.request_asset_pairs()
         result: dict[str, dict[str, Any]] = response_data["result"]
 
-        # Skip Kraken suffix variants like XBTUSD:BTNL — leveraged products
-        # that share OHLC with the underlying spot pair and would collide on
-        # (timestamp, from_asset_id, to_asset_id) at upsert time.
+        # Only keep Kraken's spot venue ("international"). Other venues such
+        # as "bitnomial_exchange" share base/quote codes with their spot
+        # counterpart and would collide on (timestamp, from_asset_id,
+        # to_asset_id) at upsert time. Default to "international" when the
+        # field is absent so older fixtures and any pair missing the field
+        # still flow through.
         asset_pairs = pd.DataFrame(
             [
                 {
@@ -76,7 +79,7 @@ class KrakenProviderAssetMarketData(AbstractProviderAssetMarketData):
                     "to_asset_code": asset_data["base"],
                 }
                 for asset_pair, asset_data in result.items()
-                if ":" not in asset_pair
+                if asset_data.get("execution_venue", "international") == "international"
             ]
         )
 

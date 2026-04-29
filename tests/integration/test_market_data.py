@@ -848,17 +848,45 @@ async def test_pull_kraken_data_skips_btnl_leveraged_pairs(
     fake_data.reset_data()
 
     # Two pair codes resolving to the same (from=USD, to=BTC) at the same timestamp.
+    # Mirrors what Kraken actually returns: spot pair on "international",
+    # BTNL pair on "bitnomial_exchange".
     use_time = dt.datetime.now(dt.timezone.utc).replace(microsecond=0)
     fake_data.asset_pairs = {
-        "XXBTZUSD": {"base": "XXBT", "quote": "ZUSD"},
-        "XBTUSD:BTNL": {"base": "XBT", "quote": "USD"},
+        "XXBTZUSD": {
+            "base": "XXBT",
+            "quote": "ZUSD",
+            "execution_venue": "international",
+        },
+        "XBTUSD:BTNL": {
+            "base": "XBT",
+            "quote": "USD",
+            "execution_venue": "bitnomial_exchange",
+        },
     }
     fake_data.market_data = {
         "XXBTZUSD": [
-            [int(use_time.timestamp()), 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0],
+            [
+                int(use_time.timestamp()),
+                100.0,
+                100.0,
+                100.0,
+                100.0,
+                100.0,
+                100.0,
+                100.0,
+            ],
         ],
         "XBTUSD:BTNL": [
-            [int(use_time.timestamp()), 200.0, 200.0, 200.0, 200.0, 200.0, 200.0, 200.0],
+            [
+                int(use_time.timestamp()),
+                200.0,
+                200.0,
+                200.0,
+                200.0,
+                200.0,
+                200.0,
+                200.0,
+            ],
         ],
     }
 
@@ -880,12 +908,102 @@ async def test_pull_kraken_data_skips_btnl_leveraged_pairs(
             .scalars()
             .all()
         )
-        assert len(rows) == 1, (
-            f"Expected exactly 1 row for (USD, BTC), got {len(rows)}"
-        )
+        assert len(rows) == 1, f"Expected exactly 1 row for (USD, BTC), got {len(rows)}"
         assert rows[0].close == 100.0, (
             f"Expected spot price 100.0 to win, got {rows[0].close} "
             "(BTNL leveraged pair leaked through)"
+        )
+
+
+@pytest.mark.asyncio
+async def test_pull_kraken_data_filters_by_execution_venue_not_pair_name(
+    fake_data: FakeData,
+):
+    """
+    The real distinguishing field between Kraken spot and Bitnomial pairs is
+    `execution_venue` ("international" vs "bitnomial_exchange") — the colon
+    in the pair name is incidental to today's naming convention. This test
+    pins the contract on the venue field, so a pair without a colon but on
+    a non-international venue is still skipped. A substring filter on ":"
+    in the pair code would let it through.
+    """
+    # Get the engine.
+    engine = await get_engine()
+
+    (
+        _,
+        _,
+        _,
+        _,
+        btc_asset_id,
+        _,
+        usd_asset_id,
+        _,
+    ) = create_base_data(engine)
+
+    fake_data.reset_data()
+
+    # Both pairs share the same base/quote and timestamp, so they map to the
+    # same (from_asset_id, to_asset_id) PK. The Bitnomial-venue pair has NO
+    # colon in its code on purpose, so only an execution_venue filter catches it.
+    use_time = dt.datetime.now(dt.timezone.utc).replace(microsecond=0)
+    fake_data.asset_pairs = {
+        "XXBTZUSD": {
+            "base": "XXBT",
+            "quote": "ZUSD",
+            "execution_venue": "international",
+        },
+        "XBTUSDBITNOMIAL": {
+            "base": "XXBT",
+            "quote": "ZUSD",
+            "execution_venue": "bitnomial_exchange",
+        },
+    }
+    fake_data.market_data = {
+        "XXBTZUSD": [
+            [
+                int(use_time.timestamp()),
+                100.0,
+                100.0,
+                100.0,
+                100.0,
+                100.0,
+                100.0,
+                100.0,
+            ],
+        ],
+        "XBTUSDBITNOMIAL": [
+            [
+                int(use_time.timestamp()),
+                200.0,
+                200.0,
+                200.0,
+                200.0,
+                200.0,
+                200.0,
+                200.0,
+            ],
+        ],
+    }
+
+    await pull_provider_asset_market_data()
+
+    with Session(engine) as session:
+        rows = (
+            session.execute(
+                select(ProviderAssetMarket).where(
+                    ProviderAssetMarket.from_asset_id == usd_asset_id,
+                    ProviderAssetMarket.to_asset_id == btc_asset_id,
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len(rows) == 1, f"Expected exactly 1 row for (USD, BTC), got {len(rows)}"
+        assert rows[0].close == 100.0, (
+            f"Expected spot (international) price 100.0 to win, got {rows[0].close} "
+            "(non-international venue leaked through — filter is keying off the "
+            "wrong field)"
         )
 
 
