@@ -793,6 +793,221 @@ async def test_market_data_batching_with_empty_data(
 
 
 @pytest.mark.asyncio
+async def test_pull_kraken_data_skips_btnl_leveraged_pairs(
+    fake_data: FakeData,
+):
+    """
+    Kraken returns leveraged variants like XBTUSD:BTNL alongside the spot
+    pair XXBTZUSD. Both resolve to the same (from_asset_id, to_asset_id) and
+    return OHLC at the same timestamp, which would collide on the
+    provider_asset_market PK. We should filter ":" suffixed pairs at the
+    source so only the spot pair's data lands in the database.
+    """
+    # Get the engine.
+    engine = await get_engine()
+
+    # Create the base data (gives us XXBT/ZUSD provider asset codes).
+    (
+        _,
+        _,
+        _,
+        kraken_provider_id,
+        btc_asset_id,
+        _,
+        usd_asset_id,
+        _,
+    ) = create_base_data(engine)
+
+    # Register XBT and USD as additional Kraken codes for BTC/USD so the
+    # leveraged pair (XBTUSD:BTNL) resolves to the same asset ids as XXBTZUSD.
+    # Use a different date than create_base_data so the provider_asset PK
+    # (date, provider_id, asset_id) doesn't collide.
+    two_days_ago = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=2)).date()
+    with Session(engine) as session:
+        session.add(
+            ProviderAsset(
+                date=two_days_ago,
+                provider_id=kraken_provider_id,
+                asset_id=btc_asset_id,
+                asset_code="XBT",
+                is_active=True,
+            )
+        )
+        session.add(
+            ProviderAsset(
+                date=two_days_ago,
+                provider_id=kraken_provider_id,
+                asset_id=usd_asset_id,
+                asset_code="USD",
+                is_active=True,
+            )
+        )
+        session.commit()
+
+    # Reset the fake data.
+    fake_data.reset_data()
+
+    # Two pair codes resolving to the same (from=USD, to=BTC) at the same timestamp.
+    # Mirrors what Kraken actually returns: spot pair on "international",
+    # BTNL pair on "bitnomial_exchange".
+    use_time = dt.datetime.now(dt.timezone.utc).replace(microsecond=0)
+    fake_data.asset_pairs = {
+        "XXBTZUSD": {
+            "base": "XXBT",
+            "quote": "ZUSD",
+            "execution_venue": "international",
+        },
+        "XBTUSD:BTNL": {
+            "base": "XBT",
+            "quote": "USD",
+            "execution_venue": "bitnomial_exchange",
+        },
+    }
+    fake_data.market_data = {
+        "XXBTZUSD": [
+            [
+                int(use_time.timestamp()),
+                100.0,
+                100.0,
+                100.0,
+                100.0,
+                100.0,
+                100.0,
+                100.0,
+            ],
+        ],
+        "XBTUSD:BTNL": [
+            [
+                int(use_time.timestamp()),
+                200.0,
+                200.0,
+                200.0,
+                200.0,
+                200.0,
+                200.0,
+                200.0,
+            ],
+        ],
+    }
+
+    # With the BTNL filter in place this should complete without raising.
+    await pull_provider_asset_market_data()
+
+    # Exactly one (USD, BTC) row should exist, and it should be the spot price
+    # (100.0) — not the leveraged BTNL price (200.0). If the BTNL pair were
+    # processed, it would either crash the upsert or (after dedupe with
+    # keep="last") win the row at 200.0.
+    with Session(engine) as session:
+        rows = (
+            session.execute(
+                select(ProviderAssetMarket).where(
+                    ProviderAssetMarket.from_asset_id == usd_asset_id,
+                    ProviderAssetMarket.to_asset_id == btc_asset_id,
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len(rows) == 1, f"Expected exactly 1 row for (USD, BTC), got {len(rows)}"
+        assert rows[0].close == 100.0, (
+            f"Expected spot price 100.0 to win, got {rows[0].close} "
+            "(BTNL leveraged pair leaked through)"
+        )
+
+
+@pytest.mark.asyncio
+async def test_pull_kraken_data_filters_by_execution_venue_not_pair_name(
+    fake_data: FakeData,
+):
+    """
+    The real distinguishing field between Kraken spot and Bitnomial pairs is
+    `execution_venue` ("international" vs "bitnomial_exchange") — the colon
+    in the pair name is incidental to today's naming convention. This test
+    pins the contract on the venue field, so a pair without a colon but on
+    a non-international venue is still skipped. A substring filter on ":"
+    in the pair code would let it through.
+    """
+    # Get the engine.
+    engine = await get_engine()
+
+    (
+        _,
+        _,
+        _,
+        _,
+        btc_asset_id,
+        _,
+        usd_asset_id,
+        _,
+    ) = create_base_data(engine)
+
+    fake_data.reset_data()
+
+    # Both pairs share the same base/quote and timestamp, so they map to the
+    # same (from_asset_id, to_asset_id) PK. The Bitnomial-venue pair has NO
+    # colon in its code on purpose, so only an execution_venue filter catches it.
+    use_time = dt.datetime.now(dt.timezone.utc).replace(microsecond=0)
+    fake_data.asset_pairs = {
+        "XXBTZUSD": {
+            "base": "XXBT",
+            "quote": "ZUSD",
+            "execution_venue": "international",
+        },
+        "XBTUSDBITNOMIAL": {
+            "base": "XXBT",
+            "quote": "ZUSD",
+            "execution_venue": "bitnomial_exchange",
+        },
+    }
+    fake_data.market_data = {
+        "XXBTZUSD": [
+            [
+                int(use_time.timestamp()),
+                100.0,
+                100.0,
+                100.0,
+                100.0,
+                100.0,
+                100.0,
+                100.0,
+            ],
+        ],
+        "XBTUSDBITNOMIAL": [
+            [
+                int(use_time.timestamp()),
+                200.0,
+                200.0,
+                200.0,
+                200.0,
+                200.0,
+                200.0,
+                200.0,
+            ],
+        ],
+    }
+
+    await pull_provider_asset_market_data()
+
+    with Session(engine) as session:
+        rows = (
+            session.execute(
+                select(ProviderAssetMarket).where(
+                    ProviderAssetMarket.from_asset_id == usd_asset_id,
+                    ProviderAssetMarket.to_asset_id == btc_asset_id,
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len(rows) == 1, f"Expected exactly 1 row for (USD, BTC), got {len(rows)}"
+        assert rows[0].close == 100.0, (
+            f"Expected spot (international) price 100.0 to win, got {rows[0].close} "
+            "(non-international venue leaked through — filter is keying off the "
+            "wrong field)"
+        )
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("batch_size", [50])
 async def test_market_data_batching_with_large_dataset(
     fake_data: FakeData, batch_size: int
