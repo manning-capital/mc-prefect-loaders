@@ -161,7 +161,7 @@ async def get_data(
 
 @flow()
 async def pull_provider_asset_market_data(
-    as_of_date: Optional[dt.date] = None, batch_size: int = 10000
+    as_of_date: Optional[dt.date] = None, batch_size: int = 5000
 ):
     logger = get_run_logger()
 
@@ -188,7 +188,16 @@ async def pull_provider_asset_market_data(
             # Get the data for the instance.
             data = await get_data(market_data=instance, as_of_date=as_of_date)
 
-            # Save the data to the database. Batch by 10,000 rows at a time.
+            # Drop duplicates on the PK so the upsert can't hit the same row twice
+            # in one statement (Kraken returns aliased pairs like XBTUSD:BTNL and
+            # XXBTZUSD that resolve to the same from/to asset ids).
+            data = data.drop_duplicates(
+                subset=["timestamp", "provider_id", "from_asset_id", "to_asset_id"],
+                keep="last",
+            )
+
+            # Save the data to the database, batched to stay under Postgres's
+            # 65,535 bind-parameter cap per statement.
             for i in range(0, len(data), batch_size):
                 batch = data.iloc[i : i + batch_size]
                 await set_data(
